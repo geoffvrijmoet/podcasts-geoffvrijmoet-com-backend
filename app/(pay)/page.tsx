@@ -1,19 +1,17 @@
 "use client";
 
+import { Suspense } from "react";
 import { useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-// Initialize Stripe
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
-
-export default function PaymentPortal() {
+function PaymentPortalContent() {
   const [loading, setLoading] = useState(false);
+  const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
   const handleSubscribe = async () => {
     try {
       setLoading(true);
-      // Call your API to create a Stripe Checkout Session
       const response = await fetch("/api/create-checkout-session", {
         method: "POST",
         headers: {
@@ -23,7 +21,6 @@ export default function PaymentPortal() {
 
       const { sessionId } = await response.json();
       
-      // Redirect to Stripe Checkout
       const stripe = await stripePromise;
       const { error } = await stripe!.redirectToCheckout({ sessionId });
       
@@ -106,5 +103,26 @@ export default function PaymentPortal() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function PaymentPortal() {
+  return (
+    <Suspense
+      fallback={
+        <div className="container mx-auto py-10">
+          <Card className="max-w-2xl mx-auto">
+            <CardHeader>
+              <CardTitle>Loading...</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p>Please wait...</p>
+            </CardContent>
+          </Card>
+        </div>
+      }
+    >
+      <PaymentPortalContent />
+    </Suspense>
   );
 } 
