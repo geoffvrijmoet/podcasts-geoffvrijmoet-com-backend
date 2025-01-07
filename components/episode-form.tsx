@@ -63,6 +63,14 @@ type NewEpisodeData = {
   date: string;
 };
 
+// Add these predefined time entries
+const QUICK_TIME_ENTRIES = {
+  "Quick Edit": { hours: 0, minutes: 45, seconds: 0 },
+  "Standard Edit": { hours: 1, minutes: 30, seconds: 0 },
+  "Long Edit": { hours: 2, minutes: 15, seconds: 0 },
+  "Video Edit": { hours: 1, minutes: 45, seconds: 0 },
+};
+
 export function EpisodeForm() {
   const [loading, setLoading] = useState(false);
   const [fetchingEpisodes, setFetchingEpisodes] = useState(true);
@@ -805,6 +813,30 @@ export function EpisodeForm() {
                   PayPal (2.9% + $0.10)
                 </Label>
               </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <Label>Quick Time Entry</Label>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(QUICK_TIME_ENTRIES).map(([label, time]) => (
+                <Button
+                  key={label}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFormData(prev => ({
+                    ...prev,
+                    timeEntries: [{
+                      hours: time.hours,
+                      minutes: time.minutes,
+                      seconds: time.seconds
+                    }]
+                  }))}
+                >
+                  {label} ({time.hours}h {time.minutes}m)
+                </Button>
+              ))}
             </div>
           </div>
         </div>
