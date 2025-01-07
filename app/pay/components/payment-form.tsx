@@ -1,37 +1,55 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function PaymentForm() {
   const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
   const handleSubscribe = async () => {
     try {
       setLoading(true);
-      const response = await fetch("/api/create-checkout-session", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+      startTransition(async () => {
+        const response = await fetch("/api/create-checkout-session", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
 
-      const { sessionId } = await response.json();
-      
-      const stripe = await stripePromise;
-      const { error } = await stripe!.redirectToCheckout({ sessionId });
-      
-      if (error) {
-        console.error("Error:", error);
-      }
+        const { sessionId } = await response.json();
+        
+        const stripe = await stripePromise;
+        const { error } = await stripe!.redirectToCheckout({ sessionId });
+        
+        if (error) {
+          console.error("Error:", error);
+        }
+      });
     } catch (err) {
       console.error("Error:", err);
     } finally {
       setLoading(false);
     }
   };
+
+  if (isPending) {
+    return (
+      <div className="container mx-auto py-10">
+        <Card className="max-w-2xl mx-auto">
+          <CardHeader>
+            <CardTitle>Loading...</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>Please wait...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto py-10">
@@ -93,10 +111,10 @@ export function PaymentForm() {
             </div>
             <button
               onClick={handleSubscribe}
-              disabled={loading}
+              disabled={loading || isPending}
               className="w-full bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-lg font-medium transition-colors"
             >
-              {loading ? "Processing..." : "Subscribe Now"}
+              {loading || isPending ? "Processing..." : "Subscribe Now"}
             </button>
           </div>
         </CardContent>
