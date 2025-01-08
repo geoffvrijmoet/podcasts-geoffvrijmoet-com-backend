@@ -3,6 +3,16 @@ const nextConfig = {
   async rewrites() {
     return [
       {
+        source: '/',
+        has: [
+          {
+            type: 'host',
+            value: 'pay.podcasts.geoffvrijmoet.com',
+          },
+        ],
+        destination: '/pay',
+      },
+      {
         source: '/:path*',
         has: [
           {
