@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  async rewrites() {
+  async redirects() {
     return [
       {
         source: '/',
@@ -10,38 +10,26 @@ const nextConfig = {
             value: 'pay.podcasts.geoffvrijmoet.com',
           },
         ],
+        permanent: true,
         destination: '/pay',
-      },
-      {
-        source: '/:path*',
-        has: [
-          {
-            type: 'host',
-            value: 'pay.podcasts.geoffvrijmoet.com',
-          },
-        ],
-        destination: '/pay/:path*',
       },
     ];
   },
-  async headers() {
-    return [
-      {
-        source: '/:path*',
-        has: [
-          {
-            type: 'host',
-            value: 'pay.podcasts.geoffvrijmoet.com',
-          },
-        ],
-        headers: [
-          {
-            key: 'x-pathname-rewrite',
-            value: '/pay',
-          },
-        ],
-      },
-    ];
+  async rewrites() {
+    return {
+      beforeFiles: [
+        {
+          source: '/:path*',
+          has: [
+            {
+              type: 'host',
+              value: 'pay.podcasts.geoffvrijmoet.com',
+            },
+          ],
+          destination: '/pay/:path*',
+        },
+      ],
+    };
   },
 };
 
