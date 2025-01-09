@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { clerkMiddleware, getAuth } from "@clerk/nextjs/server";
+import { getAuth } from "@clerk/nextjs/server";
 
 // Define subdomain mappings
 const subdomains: Record<string, string> = {
@@ -9,36 +9,41 @@ const subdomains: Record<string, string> = {
   'api': '/api'
 }
 
-async function middleware(request: NextRequest) {
-  const { userId } = getAuth(request);
-  const hostname = request.headers.get('host');
-  const path = request.nextUrl.pathname;
-  
-  // Skip auth for public routes
-  const isPublicRoute = path.startsWith('/sign-in') || path.startsWith('/sign-up');
-  
-  // Extract subdomain from hostname
-  const subdomain = hostname?.split('.')[0];
-  
-  // Handle subdomain routing
-  if (subdomain && subdomains[subdomain]) {
-    const url = request.nextUrl.clone();
-    url.pathname = `${subdomains[subdomain]}${path === '/' ? '' : path}`;
-    return NextResponse.rewrite(url);
-  }
+export async function middleware(request: NextRequest) {
+  try {
+    const { userId } = getAuth(request);
+    const hostname = request.headers.get('host') || '';
+    const path = request.nextUrl.pathname;
+    
+    // Skip auth for public routes
+    const isPublicRoute = path.startsWith('/sign-in') || path.startsWith('/sign-up');
+    
+    // Extract subdomain from hostname
+    const subdomain = hostname.split('.')[0];
+    
+    // Handle subdomain routing first
+    if (subdomain && subdomains[subdomain]) {
+      const url = request.nextUrl.clone();
+      // Only rewrite if we're not already on the correct path
+      if (!path.startsWith(subdomains[subdomain])) {
+        url.pathname = `${subdomains[subdomain]}${path === '/' ? '' : path}`;
+        return NextResponse.rewrite(url);
+      }
+    }
 
-  // Protect non-public routes
-  if (!isPublicRoute && !userId) {
-    const signInUrl = new URL('/sign-in', request.url);
-    signInUrl.searchParams.set('redirect_url', request.url);
-    return NextResponse.redirect(signInUrl);
-  }
+    // Handle auth after subdomain routing
+    if (!isPublicRoute && !userId) {
+      const signInUrl = new URL('/sign-in', request.url);
+      signInUrl.searchParams.set('redirect_url', request.url);
+      return NextResponse.redirect(signInUrl);
+    }
 
-  return NextResponse.next();
+    return NextResponse.next();
+  } catch (error) {
+    console.error('Middleware error:', error);
+    return NextResponse.next();
+  }
 }
-
-// Wrap the middleware with Clerk
-export default clerkMiddleware((auth, req) => middleware(req));
 
 export const config = {
   matcher: [
