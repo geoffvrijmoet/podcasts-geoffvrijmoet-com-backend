@@ -9,19 +9,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Loader2 } from "lucide-react";
 
 type Episode = {
+  _id: string;
   client: string;
   episodeTitle: string;
   type: string;
   earnedAfterFees: number;
   invoicedAmount: number;
   billedMinutes: number;
-  lengthHours: number;
-  lengthMinutes: number;
-  lengthSeconds: number;
+  length: {
+    hours: number;
+    minutes: number;
+    seconds: number;
+  };
   paymentMethod: string;
-  editingHours: number;
-  editingMinutes: number;
-  editingSeconds: number;
+  editingTime: {
+    hours: number;
+    minutes: number;
+    seconds: number;
+  };
   billableHours: number;
   runningHourlyTotal: number;
   ratePerMinute: number;
@@ -113,9 +118,9 @@ export function EpisodeForm() {
   async function fetchEpisodes() {
     try {
       setFetchingEpisodes(true);
-      const response = await fetch("/api/sheets");
-      const { data } = await response.json();
-      setEpisodes(data || []);
+      const response = await fetch("/api/invoices");
+      const { invoices } = await response.json();
+      setEpisodes(invoices || []);
     } catch (error) {
       console.error("Error fetching episodes:", error);
     } finally {
@@ -131,31 +136,33 @@ export function EpisodeForm() {
   const handleNewEpisodeSubmit = async () => {
     try {
       setLoading(true);
-      const response = await fetch("/api/sheets", {
+      const response = await fetch("/api/invoices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          episode: {
-            ...newEpisode,
-            client: newEpisode.podcastName,
-            type: newEpisode.episodeType,
-            earnedAfterFees: 0,
-            invoicedAmount: 0,
-            billedMinutes: 0,
-            lengthHours: 0,
-            lengthMinutes: 0,
-            lengthSeconds: 0,
-            paymentMethod: "",
-            editingHours: 0,
-            editingMinutes: 0,
-            editingSeconds: 0,
-            billableHours: 0,
-            runningHourlyTotal: 0,
-            dateInvoiced: newEpisode.isInvoiced ? formatDate(newEpisode.date) : '',
-            datePaid: "",
-            note: "",
-            ratePerMinute: 0
+          client: newEpisode.podcastName,
+          episodeTitle: newEpisode.episodeTitle,
+          type: newEpisode.episodeType,
+          earnedAfterFees: 0,
+          invoicedAmount: 0,
+          billedMinutes: 0,
+          length: {
+            hours: 0,
+            minutes: 0,
+            seconds: 0
           },
+          paymentMethod: "",
+          editingTime: {
+            hours: 0,
+            minutes: 0,
+            seconds: 0
+          },
+          billableHours: 0,
+          runningHourlyTotal: 0,
+          ratePerMinute: 0,
+          dateInvoiced: newEpisode.isInvoiced ? formatDate(newEpisode.date) : '',
+          datePaid: "",
+          note: ""
         }),
       });
 
@@ -182,23 +189,29 @@ export function EpisodeForm() {
     if (value === "new") {
       setShowNewEpisodeDialog(true);
     } else {
-      const reversedIndex = episodes.length - 1 - parseInt(value);
-      const selectedEpisode = episodes[reversedIndex];
-      console.log('Selected episode:', selectedEpisode);
+      console.log('Selected episode ID:', value);
+      const selectedEpisode = episodes.find(ep => ep._id === value);
+      console.log('Selected episode:', {
+        _id: selectedEpisode?._id,
+        client: selectedEpisode?.client,
+        episodeTitle: selectedEpisode?.episodeTitle,
+        length: selectedEpisode?.length,
+        editingTime: selectedEpisode?.editingTime
+      });
       
       if (selectedEpisode) {
         const newFormData = {
           ...formData,
-          episodeId: value,
+          episodeId: selectedEpisode._id,
           lengths: [{
-            hours: selectedEpisode.lengthHours || 0,
-            minutes: selectedEpisode.lengthMinutes || 0,
-            seconds: selectedEpisode.lengthSeconds || 0
+            hours: selectedEpisode.length.hours || 0,
+            minutes: selectedEpisode.length.minutes || 0,
+            seconds: selectedEpisode.length.seconds || 0
           }],
           timeEntries: [{
-            hours: selectedEpisode.editingHours || 0,
-            minutes: selectedEpisode.editingMinutes || 0,
-            seconds: selectedEpisode.editingSeconds || 0
+            hours: selectedEpisode.editingTime.hours || 0,
+            minutes: selectedEpisode.editingTime.minutes || 0,
+            seconds: selectedEpisode.editingTime.seconds || 0
           }],
         };
         
@@ -253,11 +266,27 @@ export function EpisodeForm() {
     setLoading(true);
 
     try {
-      const reversedIndex = episodes.length - 1 - parseInt(formData.episodeId);
+      console.log('Form data being submitted:', formData);
+      const selectedEpisode = episodes.find(ep => ep._id === formData.episodeId);
+      
+      if (!selectedEpisode) {
+        throw new Error('No episode selected');
+      }
+
+      console.log('Selected episode for update:', {
+        _id: selectedEpisode._id,
+        client: selectedEpisode.client,
+        episodeTitle: selectedEpisode.episodeTitle
+      });
       
       // Sum up all length entries and time entries
       const totalLength = sumTimeEntries(formData.lengths);
       const totalTimeSpent = sumTimeEntries(formData.timeEntries);
+      
+      console.log('Calculated totals:', {
+        totalLength,
+        totalTimeSpent
+      });
       
       // Calculate billed minutes (total length in minutes)
       const billedMinutes = (totalLength.hours * 60) + totalLength.minutes + (totalLength.seconds / 60);
@@ -283,15 +312,19 @@ export function EpisodeForm() {
         (invoicedAmount / (totalLength.hours * 60 + totalLength.minutes + (totalLength.seconds / 60)));
 
       const updatedEpisode = {
-        ...episodes[reversedIndex],
-        client: episodes[reversedIndex].client,
+        client: selectedEpisode.client,
+        episodeTitle: selectedEpisode.episodeTitle,
         type: formData.episodeType,
-        lengthHours: totalLength.hours,
-        lengthMinutes: totalLength.minutes,
-        lengthSeconds: totalLength.seconds,
-        editingHours: totalTimeSpent.hours,
-        editingMinutes: totalTimeSpent.minutes,
-        editingSeconds: totalTimeSpent.seconds,
+        length: {
+          hours: totalLength.hours,
+          minutes: totalLength.minutes,
+          seconds: totalLength.seconds
+        },
+        editingTime: {
+          hours: totalTimeSpent.hours,
+          minutes: totalTimeSpent.minutes,
+          seconds: totalTimeSpent.seconds
+        },
         billedMinutes: Math.round(billedMinutes * 100) / 100,
         invoicedAmount,
         earnedAfterFees,
@@ -302,16 +335,22 @@ export function EpisodeForm() {
         paymentMethod: formData.paymentMethod
       };
 
-      const response = await fetch("/api/sheets", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rowIndex: reversedIndex,
-          episode: updatedEpisode
-        })
+      console.log('Sending update to MongoDB:', {
+        episodeId: formData.episodeId,
+        updatedData: updatedEpisode
       });
 
-      if (!response.ok) throw new Error("Failed to log time");
+      const response = await fetch(`/api/invoices/${formData.episodeId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedEpisode)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Error response from server:', errorData);
+        throw new Error("Failed to log time");
+      }
 
       // Reset form
       setFormData({
@@ -412,14 +451,10 @@ export function EpisodeForm() {
 
     try {
       setLoading(true);
-      const reversedIndex = episodes.length - 1 - parseInt(formData.episodeId);
       
-      const response = await fetch('/api/sheets', {
+      const response = await fetch(`/api/invoices/${formData.episodeId}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rowIndex: reversedIndex + 2 // +2 to account for header row and 0-based index
-        })
+        headers: { 'Content-Type': 'application/json' }
       });
 
       if (!response.ok) throw new Error('Failed to delete episode');
@@ -483,10 +518,10 @@ export function EpisodeForm() {
                         {episodes
                           .filter(episode => episode.client && episode.episodeTitle)
                           .reverse()
-                          .map((episode, index) => (
+                          .map((episode) => (
                             <SelectItem 
-                              key={index} 
-                              value={index.toString()}
+                              key={episode._id} 
+                              value={episode._id}
                             >
                               {`${episode.client} - ${episode.episodeTitle}`}
                             </SelectItem>
@@ -698,7 +733,7 @@ export function EpisodeForm() {
                   checked={formData.episodeType === 'Podcast'}
                   onChange={(e) => {
                     const newType = e.target.value as 'Podcast' | 'Video';
-                    const currentEpisode = episodes[parseInt(formData.episodeId)];
+                    const currentEpisode = episodes.find(ep => ep._id === formData.episodeId);
                     if (currentEpisode?.client) {
                       updateDefaultRates(currentEpisode.client, newType);
                     } else {
@@ -720,7 +755,7 @@ export function EpisodeForm() {
                   checked={formData.episodeType === 'Video'}
                   onChange={(e) => {
                     const newType = e.target.value as 'Podcast' | 'Video';
-                    const currentEpisode = episodes[parseInt(formData.episodeId)];
+                    const currentEpisode = episodes.find(ep => ep._id === formData.episodeId);
                     if (currentEpisode?.client) {
                       updateDefaultRates(currentEpisode.client, newType);
                     } else {

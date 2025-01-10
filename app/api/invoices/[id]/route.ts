@@ -47,4 +47,38 @@ export async function PUT(
       { status: 500 }
     );
   }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const client = new MongoClient(process.env.MONGODB_URI as string);
+    await client.connect();
+    
+    const db = client.db();
+    const invoicesCollection = db.collection('invoices');
+    
+    const result = await invoicesCollection.deleteOne({
+      _id: new ObjectId(params.id)
+    });
+    
+    await client.close();
+    
+    if (result.deletedCount === 0) {
+      return NextResponse.json(
+        { error: 'Invoice not found' },
+        { status: 404 }
+      );
+    }
+    
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting invoice:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete invoice' },
+      { status: 500 }
+    );
+  }
 } 
