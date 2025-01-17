@@ -8,11 +8,29 @@ export async function GET() {
     
     const db = client.db();
     const invoicesCollection = db.collection('invoices');
+    const clientsCollection = db.collection('clients');
     
     // Fetch all invoices, sorted by date invoiced in descending order
     const invoices = await invoicesCollection
-      .find({})
-      .sort({ dateInvoiced: -1 })
+      .aggregate([
+        {
+          $lookup: {
+            from: 'clients',
+            localField: 'clientId',
+            foreignField: '_id',
+            as: 'clientDetails'
+          }
+        },
+        {
+          $unwind: {
+            path: '$clientDetails',
+            preserveNullAndEmptyArrays: true
+          }
+        },
+        {
+          $sort: { dateInvoiced: -1 }
+        }
+      ])
       .toArray();
     
     await client.close();
@@ -34,8 +52,21 @@ export async function POST(request: Request) {
     
     const db = client.db();
     const invoicesCollection = db.collection('invoices');
+    const clientsCollection = db.collection('clients');
     
     const body = await request.json();
+    
+    // Find the client by name to get the clientId
+    const clientDoc = await clientsCollection.findOne({ name: body.client });
+    if (!clientDoc) {
+      return NextResponse.json(
+        { error: 'Client not found' },
+        { status: 404 }
+      );
+    }
+    
+    // Add clientId to the invoice document
+    body.clientId = clientDoc._id;
     
     // Convert string dates to Date objects
     if (body.dateInvoiced) {

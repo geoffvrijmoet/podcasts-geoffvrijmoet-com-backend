@@ -11,9 +11,22 @@ export async function PUT(
     
     const db = client.db();
     const invoicesCollection = db.collection('invoices');
+    const clientsCollection = db.collection('clients');
     
     const body = await request.json();
     const { _id: _id_unused, ...updateData } = body; // eslint-disable-line @typescript-eslint/no-unused-vars
+
+    // If client name is being updated, find the new clientId
+    if (updateData.client) {
+      const clientDoc = await clientsCollection.findOne({ name: updateData.client });
+      if (!clientDoc) {
+        return NextResponse.json(
+          { error: 'Client not found' },
+          { status: 404 }
+        );
+      }
+      updateData.clientId = clientDoc._id;
+    }
 
     // Convert string dates to Date objects
     if (updateData.dateInvoiced) {
