@@ -10,6 +10,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Command } from "cmdk";
 
 interface Invoice {
   _id: string;
@@ -24,12 +25,14 @@ interface Invoice {
     minutes: number;
     seconds: number;
   };
+  lengthEntries?: TimeEntry[];
   paymentMethod: string;
   editingTime: {
     hours: number;
     minutes: number;
     seconds: number;
   };
+  timeEntries?: TimeEntry[];
   billableHours: number;
   runningHourlyTotal: number;
   ratePerMinute: number;
@@ -38,11 +41,19 @@ interface Invoice {
   note: string;
 }
 
+// Add TimeEntry type
+type TimeEntry = {
+  hours: number;
+  minutes: number;
+  seconds: number;
+};
+
 interface InvoiceEditFormProps {
-  invoice: Invoice;
+  invoice?: Invoice;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: () => void;
+  mode?: 'edit' | 'create';
 }
 
 const calculateEarnedAfterFees = (amount: number, paymentMethod: string): number => {
@@ -87,26 +98,107 @@ const calculateStats = (
   };
 };
 
-export function InvoiceEditForm({ invoice, open, onOpenChange, onSave }: InvoiceEditFormProps) {
-  const [formData, setFormData] = useState<Partial<Invoice>>({
-    client: invoice.client,
-    episodeTitle: invoice.episodeTitle,
-    type: invoice.type,
-    earnedAfterFees: invoice.earnedAfterFees,
-    invoicedAmount: invoice.invoicedAmount,
-    billedMinutes: invoice.billedMinutes,
-    paymentMethod: invoice.paymentMethod,
-    dateInvoiced: invoice.dateInvoiced,
-    datePaid: invoice.datePaid,
-    note: invoice.note,
-    editingTime: invoice.editingTime,
-  });
+const emptyInvoice: Partial<Invoice> = {
+  client: '',
+  episodeTitle: '',
+  type: 'Podcast',
+  earnedAfterFees: 0,
+  invoicedAmount: 0,
+  billedMinutes: 0,
+  length: { hours: 0, minutes: 0, seconds: 0 },
+  editingTime: { hours: 0, minutes: 0, seconds: 0 },
+  paymentMethod: '',
+  dateInvoiced: '',
+  datePaid: '',
+  note: '',
+};
+
+export function InvoiceEditForm({ invoice, open, onOpenChange, onSave, mode = 'edit' }: InvoiceEditFormProps) {
+  const [formData, setFormData] = useState<Partial<Invoice>>(
+    mode === 'edit' ? {
+      client: invoice?.client || '',
+      episodeTitle: invoice?.episodeTitle || '',
+      type: invoice?.type || '',
+      earnedAfterFees: invoice?.earnedAfterFees || 0,
+      invoicedAmount: invoice?.invoicedAmount || 0,
+      billedMinutes: invoice?.billedMinutes || 0,
+      paymentMethod: invoice?.paymentMethod || '',
+      dateInvoiced: invoice?.dateInvoiced || '',
+      datePaid: invoice?.datePaid || '',
+      note: invoice?.note || '',
+      editingTime: invoice?.editingTime || { hours: 0, minutes: 0, seconds: 0 },
+      length: invoice?.length || { hours: 0, minutes: 0, seconds: 0 },
+    } : emptyInvoice
+  );
+
+  // Update timeEntries initialization to use stored entries if available
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>(
+    mode === 'edit' && invoice?.timeEntries ? 
+      invoice.timeEntries : 
+      [invoice?.editingTime || { hours: 0, minutes: 0, seconds: 0 }]
+  );
+
+  // Update lengthEntries initialization to use stored entries if available
+  const [lengthEntries, setLengthEntries] = useState<TimeEntry[]>(
+    mode === 'edit' && invoice?.lengthEntries ? 
+      invoice.lengthEntries : 
+      [invoice?.length || { hours: 0, minutes: 0, seconds: 0 }]
+  );
+
+  // Add function to handle adding a new time entry
+  const addTimeEntry = () => {
+    setTimeEntries([...timeEntries, { hours: 0, minutes: 0, seconds: 0 }]);
+  };
+
+  // Add function to handle removing a time entry
+  const removeTimeEntry = (index: number) => {
+    if (timeEntries.length > 1) {
+      setTimeEntries(timeEntries.filter((_, i) => i !== index));
+    }
+  };
+
+  // Add function to update a time entry
+  const updateTimeEntry = (index: number, field: keyof TimeEntry, value: number) => {
+    const newTimeEntries = [...timeEntries];
+    newTimeEntries[index] = { ...newTimeEntries[index], [field]: value };
+    setTimeEntries(newTimeEntries);
+
+    // Calculate total time and update formData
+    const totalTime = sumTimeEntries(newTimeEntries);
+    setFormData(prev => ({
+      ...prev,
+      editingTime: totalTime
+    }));
+  };
+
+  // Add function to sum up time entries
+  const sumTimeEntries = (entries: TimeEntry[]) => {
+    const total = entries.reduce(
+      (acc, entry) => {
+        let totalSeconds = acc.seconds + entry.seconds;
+        let totalMinutes = acc.minutes + entry.minutes + Math.floor(totalSeconds / 60);
+        const totalHours = acc.hours + entry.hours + Math.floor(totalMinutes / 60);
+        
+        totalSeconds = totalSeconds % 60;
+        totalMinutes = totalMinutes % 60;
+
+        return {
+          hours: totalHours,
+          minutes: totalMinutes,
+          seconds: totalSeconds
+        };
+      },
+      { hours: 0, minutes: 0, seconds: 0 }
+    );
+
+    return total;
+  };
 
   const [stats, setStats] = useState(() => 
     calculateStats(
-      invoice.earnedAfterFees,
-      invoice.billedMinutes,
-      invoice.editingTime
+      mode === 'edit' ? (invoice?.earnedAfterFees || 0) : 0,
+      mode === 'edit' ? (invoice?.billedMinutes || 0) : 0,
+      mode === 'edit' ? (invoice?.editingTime || { hours: 0, minutes: 0, seconds: 0 }) : { hours: 0, minutes: 0, seconds: 0 }
     )
   );
 
@@ -139,23 +231,31 @@ export function InvoiceEditForm({ invoice, open, onOpenChange, onSave }: Invoice
     setSaving(true);
 
     try {
-      const response = await fetch(`/api/invoices/${invoice._id}`, {
-        method: 'PUT',
+      // Create the data to send, including both totals and individual entries
+      const dataToSend = {
+        ...formData,
+        timeEntries: timeEntries,  // Add individual time entries
+        lengthEntries: lengthEntries,  // Add individual length entries
+        editingTime: sumTimeEntries(timeEntries),  // Ensure total is updated
+        length: sumTimeEntries(lengthEntries),  // Ensure total is updated
+      };
+
+      const response = await fetch(`/api/invoices${mode === 'edit' ? `/${invoice?._id}` : ''}`, {
+        method: mode === 'edit' ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(dataToSend),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to update invoice');
+        throw new Error(`Failed to ${mode === 'edit' ? 'update' : 'create'} invoice`);
       }
 
       onSave();
       onOpenChange(false);
     } catch (error) {
-      console.error('Error updating invoice:', error);
-      // You might want to show an error message to the user here
+      console.error(`Error ${mode === 'edit' ? 'updating' : 'creating'} invoice:`, error);
     } finally {
       setSaving(false);
     }
@@ -169,14 +269,86 @@ export function InvoiceEditForm({ invoice, open, onOpenChange, onSave }: Invoice
     }));
   };
 
-  const handleEditingTimeChange = (field: 'hours' | 'minutes' | 'seconds', value: string) => {
+  const [clients, setClients] = useState<string[]>([]);
+
+  // Fetch unique clients when form opens
+  useEffect(() => {
+    async function fetchClients() {
+      try {
+        const response = await fetch("/api/invoices");
+        const data = await response.json();
+        // Safely handle the data structure and filter out empty/null values
+        const uniqueClients = [...new Set(
+          (data?.invoices || [])
+            .map((inv: Invoice) => inv.client)
+            .filter((client: string) => client && client.trim() !== '')
+        )] as string[];
+        setClients(uniqueClients);
+      } catch (error) {
+        console.error("Error fetching clients:", error);
+        setClients([]);
+      }
+    }
+    fetchClients();
+  }, []);
+
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [filteredClients, setFilteredClients] = useState<string[]>([]);
+
+  // Add client filtering function
+  const handleClientChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    handleChange(e);
+    
+    // Filter clients based on input
+    const matches = clients.filter(client => 
+      client.toLowerCase().includes(value.toLowerCase())
+    );
+    setFilteredClients(matches);
+    setShowClientDropdown(true);
+  };
+
+  // Add client selection function
+  const handleClientSelect = (client: string) => {
+    setFormData(prev => ({ ...prev, client }));
+    setShowClientDropdown(false);
+  };
+
+  // Add click outside handler
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (!(event.target as HTMLElement).closest('#client')) {
+        setShowClientDropdown(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Add function to handle adding a new length entry
+  const addLengthEntry = () => {
+    setLengthEntries([...lengthEntries, { hours: 0, minutes: 0, seconds: 0 }]);
+  };
+
+  // Add function to handle removing a length entry
+  const removeLengthEntry = (index: number) => {
+    if (lengthEntries.length > 1) {
+      setLengthEntries(lengthEntries.filter((_, i) => i !== index));
+    }
+  };
+
+  // Add function to update a length entry
+  const updateLengthEntry = (index: number, field: keyof TimeEntry, value: number) => {
+    const newLengthEntries = [...lengthEntries];
+    newLengthEntries[index] = { ...newLengthEntries[index], [field]: value };
+    setLengthEntries(newLengthEntries);
+
+    // Calculate total length and update formData
+    const totalLength = sumTimeEntries(newLengthEntries);
     setFormData(prev => ({
       ...prev,
-      editingTime: {
-        hours: field === 'hours' ? parseInt(value) || 0 : prev.editingTime?.hours || 0,
-        minutes: field === 'minutes' ? parseInt(value) || 0 : prev.editingTime?.minutes || 0,
-        seconds: field === 'seconds' ? parseInt(value) || 0 : prev.editingTime?.seconds || 0,
-      }
+      length: totalLength
     }));
   };
 
@@ -184,7 +356,7 @@ export function InvoiceEditForm({ invoice, open, onOpenChange, onSave }: Invoice
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Invoice</DialogTitle>
+          <DialogTitle>{mode === 'edit' ? 'Edit Invoice' : 'New Invoice'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid grid-cols-2 gap-3">
@@ -192,12 +364,43 @@ export function InvoiceEditForm({ invoice, open, onOpenChange, onSave }: Invoice
               <label htmlFor="client" className="text-sm font-medium">
                 Client
               </label>
-              <Input
-                id="client"
-                name="client"
-                value={formData.client}
-                onChange={handleChange}
-              />
+              <div className="relative">
+                <Input
+                  id="client"
+                  name="client"
+                  value={formData.client}
+                  onChange={handleClientChange}
+                  onFocus={() => setShowClientDropdown(true)}
+                  placeholder="Select or type new client..."
+                  className="w-full"
+                />
+                {showClientDropdown && filteredClients.length > 0 && (
+                  <div className="absolute top-full left-0 w-full z-50 mt-1 rounded-md border bg-white text-popover-foreground shadow-md">
+                    <Command className="w-full">
+                      <Command.List className="max-h-[200px] overflow-y-auto p-1">
+                        {filteredClients.map((client) => (
+                          <Command.Item
+                            key={client}
+                            value={client}
+                            className="flex items-center gap-2 px-2 py-1.5 text-sm rounded-sm data-[selected=true]:bg-primary data-[selected=true]:text-primary-foreground hover:bg-primary hover:text-primary-foreground cursor-pointer bg-white"
+                            onMouseDown={(e) => {
+                              e.preventDefault(); // Prevent input blur
+                              handleClientSelect(client);
+                            }}
+                          >
+                            {client}
+                          </Command.Item>
+                        ))}
+                      </Command.List>
+                    </Command>
+                  </div>
+                )}
+                {mode === 'create' && formData.client && !clients.includes(formData.client) && (
+                  <div className="absolute -bottom-6 left-0 text-xs text-muted-foreground">
+                    Will create new client: &quot;{formData.client}&quot;
+                  </div>
+                )}
+              </div>
             </div>
             <div className="space-y-1">
               <label htmlFor="episodeTitle" className="text-sm font-medium">
@@ -211,7 +414,7 @@ export function InvoiceEditForm({ invoice, open, onOpenChange, onSave }: Invoice
               />
             </div>
             <div className="space-y-1">
-              <label htmlFor="type" className="text-sm font-medium">
+              <label htmlFor="type" className="text-sm font-medium block">
                 Type
               </label>
               <Input
@@ -290,7 +493,7 @@ export function InvoiceEditForm({ invoice, open, onOpenChange, onSave }: Invoice
               />
             </div>
             <div className="space-y-1">
-              <label htmlFor="datePaid" className="text-sm font-medium">
+              <label htmlFor="datePaid" className="text-sm font-medium block">
                 Date Paid
               </label>
               <Input
@@ -303,51 +506,141 @@ export function InvoiceEditForm({ invoice, open, onOpenChange, onSave }: Invoice
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 mt-3">
-            <div className="space-y-1">
-              <label htmlFor="editingHours" className="text-sm font-medium">
-                Hours
-              </label>
-              <Input
-                id="editingHours"
-                name="editingTime.hours"
-                type="number"
-                min="0"
-                value={formData.editingTime?.hours || 0}
-                onChange={(e) => handleEditingTimeChange('hours', e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <label htmlFor="editingMinutes" className="text-sm font-medium">
-                Minutes
-              </label>
-              <Input
-                id="editingMinutes"
-                name="editingTime.minutes"
-                type="number"
-                min="0"
-                max="59"
-                value={formData.editingTime?.minutes || 0}
-                onChange={(e) => handleEditingTimeChange('minutes', e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <label htmlFor="editingSeconds" className="text-sm font-medium">
-                Seconds
-              </label>
-              <Input
-                id="editingSeconds"
-                name="editingTime.seconds"
-                type="number"
-                min="0"
-                max="59"
-                value={formData.editingTime?.seconds || 0}
-                onChange={(e) => handleEditingTimeChange('seconds', e.target.value)}
-              />
+          <div className="space-y-4 mt-4">
+            <div className="grid grid-cols-1 gap-6">
+              {/* Episode Length Section */}
+              <div className="space-y-4">
+                <label className="text-sm font-medium">Episode Length (Final Duration)</label>
+                
+                {lengthEntries.map((entry, index) => (
+                  <div key={index} className="space-y-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Hours</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={entry.hours}
+                          onChange={(e) => updateLengthEntry(index, 'hours', Number(e.target.value))}
+                          className="transition-colors duration-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground block">Minutes</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="59"
+                          value={entry.minutes}
+                          onChange={(e) => updateLengthEntry(index, 'minutes', Number(e.target.value))}
+                          className="transition-colors duration-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground block">Seconds</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="59"
+                          value={entry.seconds}
+                          onChange={(e) => updateLengthEntry(index, 'seconds', Number(e.target.value))}
+                          className="transition-colors duration-500"
+                        />
+                      </div>
+                    </div>
+                    {index > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeLengthEntry(index)}
+                        className="text-red-500"
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                ))}
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addLengthEntry}
+                  className="mt-2"
+                >
+                  Add Length +
+                </Button>
+              </div>
+
+              {/* Time Spent Editing Section */}
+              <div className="space-y-4">
+                <label className="text-sm font-medium">Time Spent Editing</label>
+                
+                {timeEntries.map((entry, index) => (
+                  <div key={index} className="space-y-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Hours</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={entry.hours}
+                          onChange={(e) => updateTimeEntry(index, 'hours', Number(e.target.value))}
+                          className="transition-colors duration-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground block">Minutes</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="59"
+                          value={entry.minutes}
+                          onChange={(e) => updateTimeEntry(index, 'minutes', Number(e.target.value))}
+                          className="transition-colors duration-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground block">Seconds</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="59"
+                          value={entry.seconds}
+                          onChange={(e) => updateTimeEntry(index, 'seconds', Number(e.target.value))}
+                          className="transition-colors duration-500"
+                        />
+                      </div>
+                    </div>
+                    {index > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeTimeEntry(index)}
+                        className="text-red-500"
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                ))}
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addTimeEntry}
+                  className="mt-2"
+                >
+                  Add Time +
+                </Button>
+              </div>
             </div>
           </div>
 
-          <div className="space-y-1 mt-3">
+          <div className="space-y-1 mt-4">
             <label htmlFor="note" className="text-sm font-medium">
               Note
             </label>
@@ -382,7 +675,7 @@ export function InvoiceEditForm({ invoice, open, onOpenChange, onSave }: Invoice
               Cancel
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? "Saving..." : "Save Changes"}
+              {saving ? `${mode === 'edit' ? 'Saving' : 'Creating'}...` : (mode === 'edit' ? 'Save Changes' : 'Create Invoice')}
             </Button>
           </DialogFooter>
         </form>

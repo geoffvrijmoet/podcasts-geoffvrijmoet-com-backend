@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { InvoiceEditForm } from "./invoice-edit-form";
-import { Pencil } from "lucide-react";
+import { Pencil, Download } from "lucide-react";
 
 interface Invoice {
   _id: string;
@@ -75,6 +75,7 @@ export function InvoicesTable() {
   const [search, setSearch] = useState("");
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isNewDialogOpen, setIsNewDialogOpen] = useState(false);
 
   useEffect(() => {
     fetchInvoices();
@@ -100,8 +101,23 @@ export function InvoicesTable() {
     setIsEditDialogOpen(true);
   };
 
-  const handleSave = () => {
-    fetchInvoices(); // Refresh the invoices list
+  const handleDownloadPDF = async (invoiceId: string) => {
+    try {
+      const response = await fetch(`/api/invoices/${invoiceId}/pdf`);
+      if (!response.ok) throw new Error('Failed to generate PDF');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoice-${invoiceId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+    }
   };
 
   const filteredInvoices = invoices.filter((invoice) => {
@@ -134,7 +150,17 @@ export function InvoicesTable() {
   }
 
   return (
-    <>
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Invoices</h2>
+        <Button 
+          onClick={() => setIsNewDialogOpen(true)}
+          className="bg-primary hover:bg-primary/90"
+        >
+          New Invoice
+        </Button>
+      </div>
+
       <Card>
         <div className="p-4">
           <Input
@@ -189,17 +215,30 @@ export function InvoicesTable() {
                       className="group cursor-pointer transition-colors hover:bg-muted/50"
                     >
                       <TableCell className="w-[50px]">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={(e: React.MouseEvent) => {
-                            e.stopPropagation();
-                            handleEdit(invoice);
-                          }}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e: React.MouseEvent) => {
+                              e.stopPropagation();
+                              handleEdit(invoice);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e: React.MouseEvent) => {
+                              e.stopPropagation();
+                              handleDownloadPDF(invoice._id);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                       <TableCell className="font-medium">{invoice.client}</TableCell>
                       <TableCell>{invoice.episodeTitle}</TableCell>
@@ -232,9 +271,17 @@ export function InvoicesTable() {
           invoice={editingInvoice}
           open={isEditDialogOpen}
           onOpenChange={setIsEditDialogOpen}
-          onSave={handleSave}
+          onSave={fetchInvoices}
+          mode="edit"
         />
       )}
-    </>
+
+      <InvoiceEditForm
+        open={isNewDialogOpen}
+        onOpenChange={setIsNewDialogOpen}
+        onSave={fetchInvoices}
+        mode="create"
+      />
+    </div>
   );
 } 

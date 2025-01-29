@@ -1,0 +1,17 @@
+# Dependencies
+node_modules
+
+# Build output
+.next
+
+# Scripts
+dist/scripts
+scripts
+
+# Environment files
+.env*
+!.env.example
+
+# Misc
+.DS_Store
+*.pem 
