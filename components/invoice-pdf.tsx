@@ -4,16 +4,16 @@ import { createElement } from 'react';
 // Register Quicksand fonts
 Font.register({
   family: 'Quicksand',
-  fonts: [
-    {
-      src: `${process.env.NEXT_PUBLIC_APP_URL}/fonts/quicksand-latin-400-normal.woff`,
-      fontWeight: 400,
-    },
-    {
-      src: `${process.env.NEXT_PUBLIC_APP_URL}/fonts/quicksand-latin-700-normal.woff`,
-      fontWeight: 700,
-    },
-  ],
+  src: '/fonts/quicksand-latin-400-normal.woff',
+  fontStyle: 'normal',
+  fontWeight: 400
+});
+
+Font.register({
+  family: 'Quicksand',
+  src: '/fonts/quicksand-latin-700-normal.woff',
+  fontStyle: 'normal',
+  fontWeight: 700
 });
 
 interface InvoicePDFProps {
