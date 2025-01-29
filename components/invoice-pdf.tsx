@@ -4,14 +4,14 @@ import { createElement } from 'react';
 // Register Quicksand fonts
 Font.register({
   family: 'Quicksand',
-  src: '/fonts/quicksand-latin-400-normal.woff',
+  src: `${process.env.NEXT_PUBLIC_BASE_URL}/fonts/quicksand-latin-400-normal.woff`,
   fontStyle: 'normal',
   fontWeight: 400
 });
 
 Font.register({
   family: 'Quicksand',
-  src: '/fonts/quicksand-latin-700-normal.woff',
+  src: `${process.env.NEXT_PUBLIC_BASE_URL}/fonts/quicksand-latin-700-normal.woff`,
   fontStyle: 'normal',
   fontWeight: 700
 });
