@@ -6,14 +6,12 @@ Font.register({
   family: 'Quicksand',
   fonts: [
     {
-      src: `${process.env.NEXT_PUBLIC_APP_URL}/fonts/quicksand.woff`,
+      src: `${process.env.NEXT_PUBLIC_APP_URL}/fonts/quicksand-latin-400-normal.woff`,
       fontWeight: 400,
-      format: 'woff',
     },
     {
-      src: `${process.env.NEXT_PUBLIC_APP_URL}/fonts/quicksand-bold.woff`,
+      src: `${process.env.NEXT_PUBLIC_APP_URL}/fonts/quicksand-latin-700-normal.woff`,
       fontWeight: 700,
-      format: 'woff',
     },
   ],
 });
