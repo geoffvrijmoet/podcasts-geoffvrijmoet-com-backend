@@ -57,7 +57,7 @@ function safeToISOString(dateValue: string | Date | undefined | null): string {
     // Check if the date is valid
     if (isNaN(date.getTime())) return '';
     return date.toISOString();
-  } catch (error) {
+  } catch {
     console.error('Invalid date value:', dateValue);
     return '';
   }
