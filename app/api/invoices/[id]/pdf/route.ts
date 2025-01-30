@@ -49,6 +49,20 @@ function determineBillingType(invoice: Invoice): BillingType {
   return 'flat-rate';
 }
 
+// Add this helper function for safe date conversion
+function safeToISOString(dateValue: string | Date | undefined | null): string {
+  if (!dateValue) return '';
+  try {
+    const date = new Date(dateValue);
+    // Check if the date is valid
+    if (isNaN(date.getTime())) return '';
+    return date.toISOString();
+  } catch (error) {
+    console.error('Invalid date value:', dateValue);
+    return '';
+  }
+}
+
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
@@ -83,8 +97,8 @@ export async function GET(
       length: invoice.length || { hours: 0, minutes: 0, seconds: 0 },
       paymentMethod: invoice.paymentMethod || '',
       editingTime: invoice.editingTime || { hours: 0, minutes: 0, seconds: 0 },
-      dateInvoiced: invoice.dateInvoiced ? new Date(invoice.dateInvoiced).toISOString() : '',
-      datePaid: invoice.datePaid ? new Date(invoice.datePaid).toISOString() : '',
+      dateInvoiced: safeToISOString(invoice.dateInvoiced),
+      datePaid: safeToISOString(invoice.datePaid),
       note: invoice.note || '',
       billingType: determineBillingType(invoice),
     };

@@ -110,7 +110,14 @@ const formatCurrency = (amount: number) => {
 
 const formatDate = (dateString: string) => {
   if (!dateString) return '';
-  return new Date(dateString).toLocaleDateString();
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    return date.toLocaleDateString();
+  } catch {
+    console.error('Invalid date:', dateString);
+    return '';
+  }
 };
 
 const formatDuration = (duration: { hours: number; minutes: number; seconds: number }) => {
