@@ -1,19 +1,20 @@
 import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
 import { createElement } from 'react';
+import { fonts } from '@/lib/fonts';
 
 // Register Quicksand fonts
 Font.register({
   family: 'Quicksand',
-  src: 'https://fonts.gstatic.com/s/quicksand/v30/6xK-dSZaM9iE8KbpRA_LJ3z8mH9BOJvgkP8o58a-wjwxUD2GF9Zc.woff2',
-  fontStyle: 'normal',
-  fontWeight: 400
-});
-
-Font.register({
-  family: 'Quicksand',
-  src: 'https://fonts.gstatic.com/s/quicksand/v30/6xK-dSZaM9iE8KbpRA_LJ3z8mH9BOJvgkBgv58a-wjwxUD2GF9Zc.woff2',
-  fontStyle: 'normal',
-  fontWeight: 700
+  fonts: [
+    {
+      src: fonts['quicksand-latin-400-normal.woff'],
+      fontWeight: 400,
+    },
+    {
+      src: fonts['quicksand-latin-700-normal.woff'],
+      fontWeight: 700,
+    },
+  ],
 });
 
 interface InvoicePDFProps {

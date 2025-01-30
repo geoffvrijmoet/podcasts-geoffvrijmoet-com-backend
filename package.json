@@ -2,11 +2,13 @@
   "name": "podcasts-geoffvrijmoet-com-backend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "node scripts/copy-fonts.js && next dev",
-    "build": "next build",
+    "build": "npm run copy-fonts && next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "copy-fonts": "node scripts/copy-fonts.js"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.9.5",
