@@ -6,7 +6,7 @@ node_modules
 
 # Scripts
 dist/scripts
-scripts
+
 
 # Environment files
 .env*

@@ -12,8 +12,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { InvoiceEditForm } from "./invoice-edit-form";
-import { Pencil, Download } from "lucide-react";
+import { Pencil, Download, CreditCard } from "lucide-react";
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 interface Invoice {
   _id: string;
@@ -68,14 +69,12 @@ const calculateStats = (
   };
 };
 
-export function InvoicesTable() {
+export function InvoicesTable({ hideStats = false }: { hideStats?: boolean }) {
+  const router = useRouter();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isNewDialogOpen, setIsNewDialogOpen] = useState(false);
 
   useEffect(() => {
     fetchInvoices();
@@ -96,13 +95,21 @@ export function InvoicesTable() {
     }
   };
 
-  const handleEdit = (invoice: Invoice) => {
-    setEditingInvoice(invoice);
-    setIsEditDialogOpen(true);
+  const handleRowClick = (invoiceId: string) => {
+    router.push(`/invoices/${invoiceId}`);
   };
 
   const handleDownloadPDF = async (invoiceId: string) => {
     try {
+      // Get invoice details first
+      const detailsResponse = await fetch(`/api/invoices/${invoiceId}`);
+      if (!detailsResponse.ok) throw new Error('Failed to get invoice details');
+      const invoice = await detailsResponse.json();
+      
+      // Generate filename
+      const filename = `${invoice.client.toLowerCase().replace(/\s+/g, '-')}-${invoice.episodeTitle.toLowerCase().replace(/\s+/g, '-')}.pdf`;
+      
+      // Get PDF
       const response = await fetch(`/api/invoices/${invoiceId}/pdf`);
       if (!response.ok) throw new Error('Failed to generate PDF');
       
@@ -110,7 +117,7 @@ export function InvoicesTable() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `invoice-${invoiceId}.pdf`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -118,6 +125,10 @@ export function InvoicesTable() {
     } catch (error) {
       console.error('Error downloading PDF:', error);
     }
+  };
+
+  const handlePaymentLink = (invoiceId: string) => {
+    window.open(`https://pay.podcasts.geoffvrijmoet.com/invoice/${invoiceId}`, '_blank');
   };
 
   const filteredInvoices = invoices.filter((invoice) => {
@@ -151,15 +162,66 @@ export function InvoicesTable() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Invoices</h2>
-        <Button 
-          onClick={() => setIsNewDialogOpen(true)}
-          className="bg-primary hover:bg-primary/90"
-        >
-          New Invoice
-        </Button>
-      </div>
+      {!hideStats && (
+        <div className="flex justify-between items-center">
+          <div className="flex gap-10 text-2xl font-medium">
+            <div className="flex flex-col">
+              <span className="text-green-600">
+                {formatCurrency(
+                  filteredInvoices.reduce((sum, inv) => sum + inv.earnedAfterFees, 0)
+                )}
+              </span>
+              <span className="text-sm text-muted-foreground">total</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-yellow-600">
+                {formatCurrency(
+                  filteredInvoices
+                    .filter(invoice => !invoice.datePaid)
+                    .reduce((sum, invoice) => sum + invoice.earnedAfterFees, 0)
+                )}
+              </span>
+              <span className="text-sm text-muted-foreground">unpaid</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-blue-600">
+                {formatCurrency(
+                  (() => {
+                    const amounts = filteredInvoices.map(inv => inv.earnedAfterFees);
+                    if (amounts.length === 0) return 0;
+                    
+                    const dates = filteredInvoices
+                      .map(inv => new Date(inv.dateInvoiced))
+                      .filter(date => !isNaN(date.getTime()));
+                    
+                    if (dates.length === 0) return 0;
+                    
+                    const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
+                    const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
+                    const monthsDiff = (maxDate.getFullYear() - minDate.getFullYear()) * 12 + 
+                      (maxDate.getMonth() - minDate.getMonth()) + 1;
+                    
+                    const total = amounts.reduce((sum, amount) => sum + amount, 0);
+                    return total / monthsDiff;
+                  })()
+                )}
+              </span>
+              <span className="text-sm text-muted-foreground">monthly</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-purple-600">
+                {(() => {
+                  const totalInvoiced = filteredInvoices.reduce((sum, inv) => sum + inv.invoicedAmount, 0);
+                  const totalEarned = filteredInvoices.reduce((sum, inv) => sum + inv.earnedAfterFees, 0);
+                  if (totalInvoiced === 0) return '0';
+                  return ((totalEarned / totalInvoiced) * 100).toFixed(1);
+                })()}%
+              </span>
+              <span className="text-sm text-muted-foreground">margin</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Card>
         <div className="p-4">
@@ -211,8 +273,12 @@ export function InvoicesTable() {
                   return (
                     <TableRow 
                       key={invoice._id}
-                      onClick={() => handleEdit(invoice)}
-                      className="group cursor-pointer transition-colors hover:bg-muted/50"
+                      onClick={() => handleRowClick(invoice._id)}
+                      className={`group cursor-pointer transition-colors ${
+                        invoice.datePaid 
+                          ? 'bg-green-50 hover:bg-green-100' 
+                          : 'hover:bg-muted/50'
+                      }`}
                     >
                       <TableCell className="w-[50px]">
                         <div className="flex gap-1">
@@ -221,7 +287,7 @@ export function InvoicesTable() {
                             size="icon"
                             onClick={(e: React.MouseEvent) => {
                               e.stopPropagation();
-                              handleEdit(invoice);
+                              router.push(`/invoices/${invoice._id}`);
                             }}
                             className="opacity-0 group-hover:opacity-100 transition-opacity"
                           >
@@ -238,10 +304,30 @@ export function InvoicesTable() {
                           >
                             <Download className="h-4 w-4" />
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e: React.MouseEvent) => {
+                              e.stopPropagation();
+                              handlePaymentLink(invoice._id);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <CreditCard className="h-4 w-4" />
+                          </Button>
                         </div>
                       </TableCell>
                       <TableCell className="font-medium">{invoice.client}</TableCell>
-                      <TableCell>{invoice.episodeTitle}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Link 
+                            href={`/invoices/${invoice._id}`}
+                            className="text-blue-600 hover:text-blue-800"
+                          >
+                            {invoice.episodeTitle}
+                          </Link>
+                        </div>
+                      </TableCell>
                       <TableCell>{invoice.type}</TableCell>
                       <TableCell className="text-right">
                         {formatCurrency(invoice.invoicedAmount)}
@@ -265,23 +351,6 @@ export function InvoicesTable() {
           </div>
         </div>
       </Card>
-
-      {editingInvoice && (
-        <InvoiceEditForm
-          invoice={editingInvoice}
-          open={isEditDialogOpen}
-          onOpenChange={setIsEditDialogOpen}
-          onSave={fetchInvoices}
-          mode="edit"
-        />
-      )}
-
-      <InvoiceEditForm
-        open={isNewDialogOpen}
-        onOpenChange={setIsNewDialogOpen}
-        onSave={fetchInvoices}
-        mode="create"
-      />
     </div>
   );
 } 

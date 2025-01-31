@@ -1,4 +1,4 @@
-import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Font, Link } from '@react-pdf/renderer';
 import { createElement } from 'react';
 
 // Register Quicksand fonts
@@ -16,9 +16,30 @@ Font.register({
   ],
 });
 
+interface TimeEntry {
+  hours: number;
+  minutes: number;
+  seconds: number;
+}
+
+interface Invoice {
+  _id: string;
+  client: string;
+  episodeTitle: string;
+  type: string;
+  invoicedAmount: number;
+  billedMinutes: number;
+  length: TimeEntry[];
+  paymentMethod: string;
+  editingTime: TimeEntry[];
+  dateInvoiced: string;
+  datePaid: string;
+  note: string;
+}
+
 interface Rate {
   episodeType: string;
-  rateType: 'Per delivered minute' | 'Hourly';
+  rateType: 'Per delivered minute' | 'Hourly' | 'Flat rate';
   rate: number;
 }
 
@@ -30,27 +51,7 @@ interface Client {
 }
 
 interface InvoicePDFProps {
-  invoice: {
-    client: string;
-    episodeTitle: string;
-    type: string;
-    invoicedAmount: number;
-    billedMinutes: number;
-    length: {
-      hours: number;
-      minutes: number;
-      seconds: number;
-    };
-    paymentMethod: string;
-    editingTime: {
-      hours: number;
-      minutes: number;
-      seconds: number;
-    };
-    dateInvoiced: string;
-    datePaid: string;
-    note: string;
-  };
+  invoice: Invoice;
   clientData: Client;
 }
 
@@ -164,6 +165,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
   },
+  paymentSection: {
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  paymentTitle: {
+    fontSize: 14,
+    fontWeight: 700,
+    marginBottom: 12,
+    color: '#666',
+  },
+  paymentLink: {
+    color: '#2563eb',
+    textDecoration: 'underline',
+    fontSize: 14,
+  },
+  paymentMethod: {
+    marginBottom: 8,
+  },
 });
 
 const formatCurrency = (amount: number) => {
@@ -212,7 +231,7 @@ export function createInvoicePDF({ invoice, clientData }: InvoicePDFProps) {
     const matchingRate = clientData.rates.find(rate => rate.episodeType === invoice.type);
     if (!matchingRate) {
       console.error('No matching rate found for episode type:', invoice.type);
-      return { items: [], qtyLabel: 'Qty' };
+      return { items: [], qtyLabel: 'Qty', total: 0 };
     }
 
     const isPerMinute = matchingRate.rateType === 'Per delivered minute';
@@ -222,32 +241,57 @@ export function createInvoicePDF({ invoice, clientData }: InvoicePDFProps) {
     // Add episode details with appropriate quantity and rate
     let quantity = '1';
     const rate = matchingRate.rate;
-    let subtotal = invoice.invoicedAmount;
+    let total = 0;
 
     if (isPerMinute) {
       quantity = `${invoice.billedMinutes}`;
-      subtotal = rate * invoice.billedMinutes;
+      const subtotal = rate * invoice.billedMinutes;
+      total = subtotal;
+      items.push({
+        item: invoice.episodeTitle,
+        quantity,
+        rate,
+        subtotal,
+      });
     } else if (isHourly) {
       // For hourly billing, show both formats
       quantity = formatDuration(invoice.editingTime);
-      // Use decimal hours for calculation
+      // Calculate decimal hours and subtotal
       const decimalHours = invoice.editingTime.hours + (invoice.editingTime.minutes / 60) + (invoice.editingTime.seconds / 3600);
-      subtotal = rate * decimalHours;
+      const subtotal = rate * decimalHours;
+      total = subtotal;
+      items.push({
+        item: invoice.episodeTitle,
+        quantity,
+        rate,
+        subtotal,
+      });
+    } else {
+      // Flat rate
+      const subtotal = invoice.invoicedAmount;
+      total = subtotal;
+      items.push({
+        item: invoice.episodeTitle,
+        quantity: '1',
+        rate: subtotal,
+        subtotal,
+      });
     }
 
-    items.push({
-      item: invoice.episodeTitle,
-      quantity,
-      rate,
-      subtotal,
-    });
-
-    return { items, qtyLabel };
+    return { items, qtyLabel, total };
   };
 
-  const { items, qtyLabel } = getLineItems();
+  const { items, qtyLabel, total } = getLineItems();
 
-  return createElement(Document, {}, 
+  // Create filename from client and episode title
+  const filename = `${invoice.client.toLowerCase().replace(/\s+/g, '-')}-${invoice.episodeTitle.toLowerCase().replace(/\s+/g, '-')}.pdf`;
+
+  return createElement(Document, { 
+    title: filename,
+    author: 'Aurora Media LLC',
+    producer: 'Aurora Media LLC',
+    creator: 'Aurora Media LLC'
+  }, 
     createElement(Page, { size: "A4", style: styles.page }, [
       // Header with Company and Bill To sections
       createElement(View, { style: styles.headerSection, key: 'header' }, [
@@ -294,8 +338,30 @@ export function createInvoicePDF({ invoice, clientData }: InvoicePDFProps) {
       createElement(View, { style: styles.totalSection, key: 'total-section' }, [
         createElement(View, { style: styles.totalRow, key: 'total-row' }, [
           createElement(Text, { style: styles.totalLabel, key: 'total-label' }, 'Total:'),
-          createElement(Text, { style: styles.totalValue, key: 'total-value' }, formatCurrency(invoice.invoicedAmount)),
+          createElement(Text, { style: styles.totalValue, key: 'total-value' }, formatCurrency(total)),
         ]),
+      ]),
+
+      // Payment Section
+      createElement(View, { style: styles.paymentSection, key: 'payment-section' }, [
+        createElement(Text, { style: styles.paymentTitle, key: 'payment-title' }, 
+          'How to pay'
+        ),
+        createElement(Link, { 
+          src: `https://pay.podcasts.geoffvrijmoet.com/invoice/${invoice._id}`,
+          style: [styles.paymentLink, styles.paymentMethod],
+          key: 'card-link'
+        }, 'Credit/Debit Card'),
+        createElement(Link, {
+          src: `https://venmo.com/auroramedia?txn=pay&amount=${total.toFixed(2)}&note=${encodeURIComponent(invoice.episodeTitle)}`,
+          style: [styles.paymentLink, styles.paymentMethod],
+          key: 'venmo-link'
+        }, 'Venmo'),
+        createElement(Link, {
+          src: `https://paypal.me/auroramediallc/${total.toFixed(2)}`,
+          style: [styles.paymentLink, styles.paymentMethod],
+          key: 'paypal-link'
+        }, 'PayPal'),
       ]),
 
       // Thank You Message
