@@ -208,16 +208,26 @@ const formatDate = (dateString: string) => {
   }
 };
 
-const formatDuration = (duration: { hours: number; minutes: number; seconds: number }) => {
+const formatDuration = (entries: TimeEntry[]) => {
+  // Sum up all entries
+  const totalHours = entries.reduce((sum, entry) => sum + entry.hours, 0);
+  const totalMinutes = entries.reduce((sum, entry) => sum + entry.minutes, 0);
+  const totalSeconds = entries.reduce((sum, entry) => sum + entry.seconds, 0);
+
+  // Convert to normalized format
+  const normalizedHours = totalHours + Math.floor(totalMinutes / 60);
+  const normalizedMinutes = (totalMinutes % 60) + Math.floor(totalSeconds / 60);
+  const normalizedSeconds = totalSeconds % 60;
+
   // Human readable format (e.g., "3h 16m 49s")
   const parts = [];
-  if (duration.hours) parts.push(`${duration.hours}h`);
-  if (duration.minutes) parts.push(`${duration.minutes}m`);
-  if (duration.seconds) parts.push(`${duration.seconds}s`);
+  if (normalizedHours) parts.push(`${normalizedHours}h`);
+  if (normalizedMinutes) parts.push(`${normalizedMinutes}m`);
+  if (normalizedSeconds) parts.push(`${normalizedSeconds}s`);
   const humanReadable = parts.join(' ') || '0s';
 
   // Decimal hours format (e.g., "3.28 hours")
-  const decimalHours = duration.hours + (duration.minutes / 60) + (duration.seconds / 3600);
+  const decimalHours = totalHours + (totalMinutes / 60) + (totalSeconds / 3600);
   const decimal = decimalHours.toFixed(2);
 
   return `${humanReadable} (${decimal} hours)`;
@@ -257,7 +267,9 @@ export function createInvoicePDF({ invoice, clientData }: InvoicePDFProps) {
       // For hourly billing, show both formats
       quantity = formatDuration(invoice.editingTime);
       // Calculate decimal hours and subtotal
-      const decimalHours = invoice.editingTime.hours + (invoice.editingTime.minutes / 60) + (invoice.editingTime.seconds / 3600);
+      const decimalHours = invoice.editingTime.reduce((sum, entry) => 
+        sum + entry.hours + (entry.minutes / 60) + (entry.seconds / 3600)
+      , 0);
       const subtotal = rate * decimalHours;
       total = subtotal;
       items.push({
