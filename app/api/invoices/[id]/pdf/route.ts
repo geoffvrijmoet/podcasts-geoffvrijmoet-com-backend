@@ -16,8 +16,6 @@ export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders() });
 }
 
-type BillingType = 'per-minute' | 'per-hour' | 'flat-rate';
-
 interface Invoice {
   _id: ObjectId;
   client: string;
@@ -39,14 +37,19 @@ interface Invoice {
   dateInvoiced: string | Date;
   datePaid?: string | Date;
   note: string;
-  rateType?: string;
 }
 
-// Helper function to determine billing type
-function determineBillingType(invoice: Invoice): BillingType {
-  if (invoice.rateType === 'per-minute') return 'per-minute';
-  if (invoice.rateType === 'per-hour') return 'per-hour';
-  return 'flat-rate';
+interface Rate {
+  episodeType: string;
+  rateType: 'Per delivered minute' | 'Hourly';
+  rate: number;
+}
+
+interface Client {
+  _id: string;
+  name: string;
+  aliases?: string[];
+  rates: Rate[];
 }
 
 // Add this helper function for safe date conversion
@@ -63,6 +66,24 @@ function safeToISOString(dateValue: string | Date | undefined | null): string {
   }
 }
 
+// Helper function to create a safe filename
+function createSafeFilename(client: string, episodeTitle: string): string {
+  // Clean up client name and episode title
+  const safeClient = client
+    .trim()
+    .replace(/[^a-zA-Z0-9\s]/g, '')  // Remove special chars but keep spaces
+    .replace(/\s+/g, '-')            // Replace spaces with single hyphens
+    .toLowerCase();
+  
+  const safeEpisode = episodeTitle
+    .trim()
+    .replace(/[^a-zA-Z0-9\s]/g, '')
+    .replace(/\s+/g, '-')
+    .toLowerCase();
+
+  return `invoice-${safeClient}-${safeEpisode}.pdf`;
+}
+
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
@@ -73,19 +94,38 @@ export async function GET(
     
     const db = client.db();
     const invoicesCollection = db.collection('invoices');
+    const clientsCollection = db.collection('clients');
     
+    // Fetch invoice
     const invoice = await invoicesCollection.findOne({
       _id: new ObjectId(params.id)
     }) as Invoice | null;
     
-    await client.close();
-    
     if (!invoice) {
+      await client.close();
       return NextResponse.json(
         { error: 'Invoice not found' },
         { status: 404, headers: corsHeaders() }
       );
     }
+
+    // Find client by name or alias
+    const clientData = await clientsCollection.findOne({
+      $or: [
+        { name: invoice.client },
+        { aliases: invoice.client }
+      ]
+    }) as Client | null;
+
+    if (!clientData) {
+      await client.close();
+      return NextResponse.json(
+        { error: 'Client not found' },
+        { status: 404, headers: corsHeaders() }
+      );
+    }
+
+    await client.close();
 
     // Transform MongoDB document to expected invoice format
     const formattedInvoice = {
@@ -100,11 +140,13 @@ export async function GET(
       dateInvoiced: safeToISOString(invoice.dateInvoiced),
       datePaid: safeToISOString(invoice.datePaid),
       note: invoice.note || '',
-      billingType: determineBillingType(invoice),
     };
 
-    // Create PDF document
-    const doc = createInvoicePDF({ invoice: formattedInvoice });
+    // Create PDF document with invoice and client data
+    const doc = createInvoicePDF({ 
+      invoice: formattedInvoice,
+      clientData
+    });
     
     // Generate PDF
     const pdfStream = await renderToStream(doc);
@@ -117,11 +159,14 @@ export async function GET(
     const pdfBuffer = Buffer.concat(chunks);
 
     // Return PDF with appropriate headers
+    const filename = createSafeFilename(invoice.client, invoice.episodeTitle);
+    const encodedFilename = encodeURIComponent(filename);
+    
     return new NextResponse(pdfBuffer, {
       headers: {
         ...corsHeaders(),
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="invoice-${invoice._id}.pdf"`,
+        'Content-Disposition': `attachment; filename=${filename}; filename*=UTF-8''${encodedFilename}`,
       },
     });
   } catch (error) {

@@ -1,21 +1,33 @@
 import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
 import { createElement } from 'react';
-import { fonts } from '@/lib/fonts';
 
 // Register Quicksand fonts
 Font.register({
   family: 'Quicksand',
   fonts: [
     {
-      src: fonts['quicksand-latin-400-normal.woff'],
+      src: `${process.env.NEXT_PUBLIC_BASE_URL}/fonts/quicksand-latin-400-normal.woff`,
       fontWeight: 400,
     },
     {
-      src: fonts['quicksand-latin-700-normal.woff'],
+      src: `${process.env.NEXT_PUBLIC_BASE_URL}/fonts/quicksand-latin-700-normal.woff`,
       fontWeight: 700,
     },
   ],
 });
+
+interface Rate {
+  episodeType: string;
+  rateType: 'Per delivered minute' | 'Hourly';
+  rate: number;
+}
+
+interface Client {
+  _id: string;
+  name: string;
+  aliases?: string[];
+  rates: Rate[];
+}
 
 interface InvoicePDFProps {
   invoice: {
@@ -38,67 +50,119 @@ interface InvoicePDFProps {
     dateInvoiced: string;
     datePaid: string;
     note: string;
-    billingType: 'per-minute' | 'per-hour' | 'flat-rate';
   };
+  clientData: Client;
 }
 
 const styles = StyleSheet.create({
   page: {
-    padding: 30,
+    padding: 40,
     fontFamily: 'Quicksand',
+    fontSize: 12,
   },
-  header: {
+  headerSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 40,
+  },
+  companySection: {
+    width: '50%',
+  },
+  companyName: {
+    fontSize: 24,
+    fontWeight: 700,
+    marginBottom: 10,
+  },
+  companyDetails: {
+    color: '#666',
+  },
+  billToSection: {
+    width: '40%',
+  },
+  billToHeader: {
+    fontSize: 14,
+    fontWeight: 700,
+    marginBottom: 10,
+  },
+  billToDetails: {
+    color: '#666',
+  },
+  dateSection: {
+    alignItems: 'center',
     marginBottom: 30,
   },
-  title: {
-    fontSize: 24,
-    marginBottom: 10,
-    fontFamily: 'Quicksand',
-    fontWeight: 700,
-  },
-  subtitle: {
+  dateText: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 20,
-    fontFamily: 'Quicksand',
-    fontWeight: 400,
   },
-  section: {
-    marginBottom: 20,
+  gridContainer: {
+    marginBottom: 30,
   },
-  sectionTitle: {
-    fontSize: 16,
-    marginBottom: 10,
-    backgroundColor: '#f3f4f6',
-    padding: 5,
-    fontFamily: 'Quicksand',
-    fontWeight: 700,
-  },
-  row: {
+  gridHeader: {
     flexDirection: 'row',
-    marginBottom: 5,
+    backgroundColor: '#f3f4f6',
+    padding: 10,
+    marginBottom: 10,
+    borderRadius: 4,
   },
-  label: {
-    width: '30%',
-    fontSize: 12,
+  gridRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    borderBottomStyle: 'solid',
+    padding: 10,
+  },
+  colItem: {
+    width: '40%',
+    paddingRight: 10,
+  },
+  colQty: {
+    width: '20%',
+    paddingRight: 10,
+  },
+  colRate: {
+    width: '20%',
+    paddingRight: 10,
+    textAlign: 'right',
+  },
+  colSubtotal: {
+    width: '20%',
+    textAlign: 'right',
+  },
+  headerText: {
+    fontWeight: 700,
     color: '#666',
-    fontFamily: 'Quicksand',
+  },
+  totalSection: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginBottom: 40,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    borderTopStyle: 'solid',
+  },
+  totalRow: {
+    flexDirection: 'row',
+    width: '40%',
+  },
+  totalLabel: {
+    width: '50%',
+    textAlign: 'right',
+    paddingRight: 10,
+    fontSize: 14,
     fontWeight: 700,
   },
-  value: {
-    width: '70%',
-    fontSize: 12,
-    fontFamily: 'Quicksand',
-    fontWeight: 400,
+  totalValue: {
+    width: '50%',
+    textAlign: 'right',
+    fontSize: 14,
+    fontWeight: 700,
   },
-  footer: {
-    marginTop: 30,
-    borderTop: 1,
-    paddingTop: 10,
-    fontSize: 10,
+  thankYou: {
+    textAlign: 'center',
+    fontSize: 14,
     color: '#666',
-    fontFamily: 'Quicksand',
-    fontWeight: 400,
   },
 });
 
@@ -114,7 +178,11 @@ const formatDate = (dateString: string) => {
   try {
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return '';
-    return date.toLocaleDateString();
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
   } catch {
     console.error('Invalid date:', dateString);
     return '';
@@ -122,110 +190,118 @@ const formatDate = (dateString: string) => {
 };
 
 const formatDuration = (duration: { hours: number; minutes: number; seconds: number }) => {
+  // Human readable format (e.g., "3h 16m 49s")
   const parts = [];
   if (duration.hours) parts.push(`${duration.hours}h`);
   if (duration.minutes) parts.push(`${duration.minutes}m`);
   if (duration.seconds) parts.push(`${duration.seconds}s`);
-  return parts.join(' ') || '0s';
+  const humanReadable = parts.join(' ') || '0s';
+
+  // Decimal hours format (e.g., "3.28 hours")
+  const decimalHours = duration.hours + (duration.minutes / 60) + (duration.seconds / 3600);
+  const decimal = decimalHours.toFixed(2);
+
+  return `${humanReadable} (${decimal} hours)`;
 };
 
-export function createInvoicePDF({ invoice }: InvoicePDFProps) {
-  // Helper function to create time details section based on billing type
-  const createTimeDetailsSection = () => {
-    if (invoice.billingType === 'flat-rate') {
-      return null; // Don't show time details for flat rate
+export function createInvoicePDF({ invoice, clientData }: InvoicePDFProps) {
+  const getLineItems = () => {
+    const items = [];
+
+    // Find the matching rate for this invoice type
+    const matchingRate = clientData.rates.find(rate => rate.episodeType === invoice.type);
+    if (!matchingRate) {
+      console.error('No matching rate found for episode type:', invoice.type);
+      return { items: [], qtyLabel: 'Qty' };
     }
 
-    const timeRows = [];
+    const isPerMinute = matchingRate.rateType === 'Per delivered minute';
+    const isHourly = matchingRate.rateType === 'Hourly';
+    const qtyLabel = isPerMinute ? 'Minutes' : isHourly ? 'Hours' : 'Qty';
 
-    if (invoice.billingType === 'per-minute') {
-      timeRows.push(
-        createElement(View, { style: styles.row, key: 'length-row' }, [
-          createElement(Text, { style: styles.label, key: 'length-label' }, 'Episode Length:'),
-          createElement(Text, { style: styles.value, key: 'length-value' }, formatDuration(invoice.length)),
-        ]),
-        createElement(View, { style: styles.row, key: 'billed-row' }, [
-          createElement(Text, { style: styles.label, key: 'billed-label' }, 'Billed Minutes:'),
-          createElement(Text, { style: styles.value, key: 'billed-value' }, `${invoice.billedMinutes} minutes`),
-        ])
-      );
+    // Add episode details with appropriate quantity and rate
+    let quantity = '1';
+    const rate = matchingRate.rate;
+    let subtotal = invoice.invoicedAmount;
+
+    if (isPerMinute) {
+      quantity = `${invoice.billedMinutes}`;
+      subtotal = rate * invoice.billedMinutes;
+    } else if (isHourly) {
+      // For hourly billing, show both formats
+      quantity = formatDuration(invoice.editingTime);
+      // Use decimal hours for calculation
+      const decimalHours = invoice.editingTime.hours + (invoice.editingTime.minutes / 60) + (invoice.editingTime.seconds / 3600);
+      subtotal = rate * decimalHours;
     }
 
-    if (invoice.billingType === 'per-hour') {
-      timeRows.push(
-        createElement(View, { style: styles.row, key: 'editing-row' }, [
-          createElement(Text, { style: styles.label, key: 'editing-label' }, 'Editing Time:'),
-          createElement(Text, { style: styles.value, key: 'editing-value' }, formatDuration(invoice.editingTime)),
-        ])
-      );
-    }
+    items.push({
+      item: invoice.episodeTitle,
+      quantity,
+      rate,
+      subtotal,
+    });
 
-    if (timeRows.length === 0) return null;
-
-    return createElement(View, { style: styles.section, key: 'time-section' }, [
-      createElement(Text, { style: styles.sectionTitle, key: 'time-title' }, 'Time Details'),
-      ...timeRows
-    ]);
+    return { items, qtyLabel };
   };
+
+  const { items, qtyLabel } = getLineItems();
 
   return createElement(Document, {}, 
     createElement(Page, { size: "A4", style: styles.page }, [
-      createElement(View, { style: styles.header, key: 'header' }, [
-        createElement(Text, { style: styles.title, key: 'title' }, 'Invoice'),
-        createElement(Text, { style: styles.subtitle, key: 'subtitle' }, `Generated on ${new Date().toLocaleDateString()}`),
-      ]),
-
-      createElement(View, { style: styles.section, key: 'client-section' }, [
-        createElement(Text, { style: styles.sectionTitle, key: 'client-title' }, 'Client Information'),
-        createElement(View, { style: styles.row, key: 'client-row' }, [
-          createElement(Text, { style: styles.label, key: 'client-label' }, 'Client:'),
-          createElement(Text, { style: styles.value, key: 'client-value' }, invoice.client),
+      // Header with Company and Bill To sections
+      createElement(View, { style: styles.headerSection, key: 'header' }, [
+        createElement(View, { style: styles.companySection, key: 'company' }, [
+          createElement(Text, { style: styles.companyName, key: 'company-name' }, 'Aurora Media LLC'),
+          createElement(Text, { style: styles.companyDetails, key: 'company-address' }, '492 Gates Ave #4B'),
+          createElement(Text, { style: styles.companyDetails, key: 'company-city' }, 'Brooklyn, NY 11216'),
+          createElement(Text, { style: styles.companyDetails, key: 'company-phone' }, '(541) 359-5481'),
         ]),
-        createElement(View, { style: styles.row, key: 'episode-row' }, [
-          createElement(Text, { style: styles.label, key: 'episode-label' }, 'Episode Title:'),
-          createElement(Text, { style: styles.value, key: 'episode-value' }, invoice.episodeTitle),
-        ]),
-        createElement(View, { style: styles.row, key: 'type-row' }, [
-          createElement(Text, { style: styles.label, key: 'type-label' }, 'Type:'),
-          createElement(Text, { style: styles.value, key: 'type-value' }, invoice.type),
+        createElement(View, { style: styles.billToSection, key: 'bill-to' }, [
+          createElement(Text, { style: styles.billToHeader, key: 'bill-to-header' }, 'Bill To:'),
+          createElement(Text, { style: styles.billToDetails, key: 'bill-to-name' }, invoice.client),
         ]),
       ]),
 
-      createElement(View, { style: styles.section, key: 'financial-section' }, [
-        createElement(Text, { style: styles.sectionTitle, key: 'financial-title' }, 'Financial Details'),
-        createElement(View, { style: styles.row, key: 'invoiced-row' }, [
-          createElement(Text, { style: styles.label, key: 'invoiced-label' }, 'Amount:'),
-          createElement(Text, { style: styles.value, key: 'invoiced-value' }, formatCurrency(invoice.invoicedAmount)),
+      // Date Section
+      createElement(View, { style: styles.dateSection, key: 'date' }, [
+        createElement(Text, { style: styles.dateText, key: 'invoice-date' }, 
+          `Invoice Date: ${formatDate(invoice.dateInvoiced)}`
+        ),
+      ]),
+
+      // Grid Header
+      createElement(View, { style: styles.gridContainer, key: 'grid' }, [
+        createElement(View, { style: styles.gridHeader, key: 'grid-header' }, [
+          createElement(Text, { style: [styles.headerText, styles.colItem], key: 'header-item' }, 'Item'),
+          createElement(Text, { style: [styles.headerText, styles.colQty], key: 'header-qty' }, qtyLabel),
+          createElement(Text, { style: [styles.headerText, styles.colRate], key: 'header-rate' }, 'Rate'),
+          createElement(Text, { style: [styles.headerText, styles.colSubtotal], key: 'header-subtotal' }, 'Subtotal'),
         ]),
-        createElement(View, { style: styles.row, key: 'payment-row' }, [
-          createElement(Text, { style: styles.label, key: 'payment-label' }, 'Payment Method:'),
-          createElement(Text, { style: styles.value, key: 'payment-value' }, invoice.paymentMethod),
+
+        // Line Items
+        ...items.map((item, index) => 
+          createElement(View, { style: styles.gridRow, key: `row-${index}` }, [
+            createElement(Text, { style: styles.colItem, key: `item-${index}` }, item.item),
+            createElement(Text, { style: styles.colQty, key: `qty-${index}` }, item.quantity),
+            createElement(Text, { style: styles.colRate, key: `rate-${index}` }, formatCurrency(item.rate)),
+            createElement(Text, { style: styles.colSubtotal, key: `subtotal-${index}` }, formatCurrency(item.subtotal)),
+          ])
+        ),
+      ]),
+
+      // Total Section
+      createElement(View, { style: styles.totalSection, key: 'total-section' }, [
+        createElement(View, { style: styles.totalRow, key: 'total-row' }, [
+          createElement(Text, { style: styles.totalLabel, key: 'total-label' }, 'Total:'),
+          createElement(Text, { style: styles.totalValue, key: 'total-value' }, formatCurrency(invoice.invoicedAmount)),
         ]),
       ]),
 
-      createTimeDetailsSection(),
-
-      createElement(View, { style: styles.section, key: 'dates-section' }, [
-        createElement(Text, { style: styles.sectionTitle, key: 'dates-title' }, 'Dates'),
-        createElement(View, { style: styles.row, key: 'invoiced-date-row' }, [
-          createElement(Text, { style: styles.label, key: 'invoiced-date-label' }, 'Date Invoiced:'),
-          createElement(Text, { style: styles.value, key: 'invoiced-date-value' }, formatDate(invoice.dateInvoiced)),
-        ]),
-        // Only show date paid if it exists
-        invoice.datePaid && createElement(View, { style: styles.row, key: 'paid-date-row' }, [
-          createElement(Text, { style: styles.label, key: 'paid-date-label' }, 'Date Paid:'),
-          createElement(Text, { style: styles.value, key: 'paid-date-value' }, formatDate(invoice.datePaid)),
-        ]),
-      ]),
-
-      invoice.note && createElement(View, { style: styles.section, key: 'notes-section' }, [
-        createElement(Text, { style: styles.sectionTitle, key: 'notes-title' }, 'Notes'),
-        createElement(Text, { style: styles.value, key: 'notes-value' }, invoice.note),
-      ]),
-
-      createElement(View, { style: styles.footer, key: 'footer' }, [
-        createElement(Text, { key: 'footer-text' }, 'This is an automatically generated invoice.'),
-      ]),
+      // Thank You Message
+      createElement(Text, { style: styles.thankYou, key: 'thank-you' }, 
+        'Thanks for your consideration!'
+      ),
     ])
   );
 } 
