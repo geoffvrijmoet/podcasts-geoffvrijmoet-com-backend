@@ -50,7 +50,7 @@ interface Client {
   rates: Rate[];
 }
 
-interface InvoicePDFProps {
+export interface InvoicePDFProps {
   invoice: Invoice;
   clientData: Client;
 }
