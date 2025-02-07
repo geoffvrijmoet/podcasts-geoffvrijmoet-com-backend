@@ -244,7 +244,8 @@ export function InvoiceEditForm({ invoice, open, onOpenChange, onSave, mode = 'e
     formData.paymentMethod,
     formData.earnedAfterFees,
     formData.billedMinutes,
-    formData.editingTime
+    formData.editingTime,
+    stats
   ]);
 
   const [saving, setSaving] = useState(false);
