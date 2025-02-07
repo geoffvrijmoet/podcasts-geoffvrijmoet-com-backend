@@ -267,9 +267,13 @@ export function createInvoicePDF({ invoice, clientData }: InvoicePDFProps) {
       // For hourly billing, show both formats
       quantity = formatDuration(invoice.editingTime);
       // Calculate decimal hours and subtotal
-      const decimalHours = invoice.editingTime.reduce((sum, entry) => 
-        sum + entry.hours + (entry.minutes / 60) + (entry.seconds / 3600)
-      , 0);
+      const totalSeconds = invoice.editingTime.reduce((acc, entry) => {
+        return acc + 
+          (entry.hours * 3600) + 
+          (entry.minutes * 60) + 
+          entry.seconds;
+      }, 0);
+      const decimalHours = Number((totalSeconds / 3600).toFixed(2));
       const subtotal = rate * decimalHours;
       total = subtotal;
       items.push({
@@ -296,7 +300,30 @@ export function createInvoicePDF({ invoice, clientData }: InvoicePDFProps) {
   const { items, qtyLabel, total } = getLineItems();
 
   // Create filename from client and episode title
-  const filename = `${invoice.client.toLowerCase().replace(/\s+/g, '-')}-${invoice.episodeTitle.toLowerCase().replace(/\s+/g, '-')}.pdf`;
+  const cleanFileName = (str: string) => {
+    return str
+      .toLowerCase()
+      // Replace spaces with dashes
+      .replace(/\s+/g, '-')
+      // Remove square brackets and their contents
+      .replace(/\[.*?\]/g, '')
+      // Remove parentheses and their contents
+      .replace(/\(.*?\)/g, '')
+      // Replace multiple dashes with single dash
+      .replace(/-+/g, '-')
+      // Remove any trailing dashes
+      .replace(/-+$/g, '');
+  };
+
+  console.log('Original client:', invoice.client);
+  console.log('Original episode title:', invoice.episodeTitle);
+  const cleanedClient = cleanFileName(invoice.client);
+  const cleanedEpisodeTitle = cleanFileName(invoice.episodeTitle);
+  console.log('Cleaned client:', cleanedClient);
+  console.log('Cleaned episode title:', cleanedEpisodeTitle);
+
+  const filename = `${cleanedClient}-${cleanedEpisodeTitle}.pdf`;
+  console.log('Final filename:', filename);
 
   return createElement(Document, { 
     title: filename,

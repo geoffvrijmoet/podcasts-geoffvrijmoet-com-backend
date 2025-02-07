@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -114,8 +114,10 @@ const emptyInvoice: Partial<Invoice> = {
 };
 
 export function InvoiceEditForm({ invoice, open, onOpenChange, onSave, mode = 'edit' }: InvoiceEditFormProps) {
-  const [formData, setFormData] = useState<Partial<Invoice>>(
-    mode === 'edit' ? {
+  console.log('🔵 [1. Component Mount/Render]', { mode, invoice });
+
+  const [formData, setFormData] = useState<Partial<Invoice>>(() => {
+    const initialData = mode === 'edit' ? {
       client: invoice?.client || '',
       episodeTitle: invoice?.episodeTitle || '',
       type: invoice?.type || '',
@@ -128,103 +130,124 @@ export function InvoiceEditForm({ invoice, open, onOpenChange, onSave, mode = 'e
       note: invoice?.note || '',
       editingTime: invoice?.editingTime || { hours: 0, minutes: 0, seconds: 0 },
       length: invoice?.length || { hours: 0, minutes: 0, seconds: 0 },
-    } : emptyInvoice
-  );
+    } : emptyInvoice;
+    console.log('🟡 [2. Initial Form Data]', initialData);
+    return initialData;
+  });
 
-  // Update timeEntries initialization to use stored entries if available
-  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>(
-    mode === 'edit' && invoice?.timeEntries ? 
+  // Track whether we're in the middle of an update
+  const isUpdatingRef = useRef(false);
+
+  // Update timeEntries initialization
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>(() => {
+    const initialEntries = mode === 'edit' && invoice?.timeEntries ? 
       invoice.timeEntries : 
-      [invoice?.editingTime || { hours: 0, minutes: 0, seconds: 0 }]
-  );
+      [invoice?.editingTime || { hours: 0, minutes: 0, seconds: 0 }];
+    console.log('🟡 [3. Initial Time Entries]', initialEntries);
+    return initialEntries;
+  });
 
-  // Update lengthEntries initialization to use stored entries if available
-  const [lengthEntries, setLengthEntries] = useState<TimeEntry[]>(
-    mode === 'edit' && invoice?.lengthEntries ? 
+  // Update lengthEntries initialization
+  const [lengthEntries, setLengthEntries] = useState<TimeEntry[]>(() => {
+    const initialEntries = mode === 'edit' && invoice?.lengthEntries ? 
       invoice.lengthEntries : 
-      [invoice?.length || { hours: 0, minutes: 0, seconds: 0 }]
-  );
+      [invoice?.length || { hours: 0, minutes: 0, seconds: 0 }];
+    console.log('🟡 [3. Initial Length Entries]', initialEntries);
+    return initialEntries;
+  });
 
-  // Add function to handle adding a new time entry
-  const addTimeEntry = () => {
-    setTimeEntries([...timeEntries, { hours: 0, minutes: 0, seconds: 0 }]);
-  };
-
-  // Add function to handle removing a time entry
-  const removeTimeEntry = (index: number) => {
-    if (timeEntries.length > 1) {
-      setTimeEntries(timeEntries.filter((_, i) => i !== index));
-    }
-  };
-
-  // Add function to update a time entry
-  const updateTimeEntry = (index: number, field: keyof TimeEntry, value: number) => {
-    const newTimeEntries = [...timeEntries];
-    newTimeEntries[index] = { ...newTimeEntries[index], [field]: value };
-    setTimeEntries(newTimeEntries);
-
-    // Calculate total time and update formData
-    const totalTime = sumTimeEntries(newTimeEntries);
-    setFormData(prev => ({
-      ...prev,
-      editingTime: totalTime
-    }));
-  };
-
-  // Add function to sum up time entries
-  const sumTimeEntries = (entries: TimeEntry[]) => {
-    const total = entries.reduce(
-      (acc, entry) => {
-        let totalSeconds = acc.seconds + entry.seconds;
-        let totalMinutes = acc.minutes + entry.minutes + Math.floor(totalSeconds / 60);
-        const totalHours = acc.hours + entry.hours + Math.floor(totalMinutes / 60);
-        
-        totalSeconds = totalSeconds % 60;
-        totalMinutes = totalMinutes % 60;
-
-        return {
-          hours: totalHours,
-          minutes: totalMinutes,
-          seconds: totalSeconds
-        };
-      },
-      { hours: 0, minutes: 0, seconds: 0 }
-    );
-
-    return total;
-  };
-
-  const [stats, setStats] = useState(() => 
-    calculateStats(
+  const [stats, setStats] = useState(() => {
+    const initialStats = calculateStats(
       mode === 'edit' ? (invoice?.earnedAfterFees || 0) : 0,
       mode === 'edit' ? (invoice?.billedMinutes || 0) : 0,
       mode === 'edit' ? (invoice?.editingTime || { hours: 0, minutes: 0, seconds: 0 }) : { hours: 0, minutes: 0, seconds: 0 }
-    )
-  );
-
-  // Update stats when relevant values change
-  useEffect(() => {
-    const newStats = calculateStats(
-      formData.earnedAfterFees || 0,
-      formData.billedMinutes || 0,
-      formData.editingTime || { hours: 0, minutes: 0, seconds: 0 }
     );
-    setStats(newStats);
-  }, [formData.earnedAfterFees, formData.billedMinutes, formData.editingTime]);
+    console.log('🟡 [4. Initial Stats]', initialStats);
+    return initialStats;
+  });
+
+  // Combined effect to handle all calculations
+  useEffect(() => {
+    console.log('🔵 [5. Calculation Effect Triggered]', {
+      invoicedAmount: formData.invoicedAmount,
+      paymentMethod: formData.paymentMethod,
+      earnedAfterFees: formData.earnedAfterFees,
+      billedMinutes: formData.billedMinutes,
+      editingTime: formData.editingTime
+    });
+
+    if (isUpdatingRef.current) {
+      console.log('🔴 [5a. Update Already in Progress - Skipping]');
+      return;
+    }
+    
+    try {
+      console.log('🟢 [5b. Starting Update Cycle]');
+      isUpdatingRef.current = true;
+      
+      const updates: Partial<Invoice> = {};
+      let hasUpdates = false;
+
+      // Calculate earnedAfterFees if needed
+      if (formData.invoicedAmount !== undefined && formData.paymentMethod) {
+        console.log('🟡 [5c. Calculating EarnedAfterFees]', {
+          amount: formData.invoicedAmount,
+          method: formData.paymentMethod
+        });
+        
+        const earnedAfterFees = calculateEarnedAfterFees(
+          formData.invoicedAmount,
+          formData.paymentMethod
+        );
+        
+        if (earnedAfterFees !== formData.earnedAfterFees) {
+          updates.earnedAfterFees = Number(earnedAfterFees.toFixed(2));
+          hasUpdates = true;
+          console.log('🟢 [5d. EarnedAfterFees Updated]', {
+            old: formData.earnedAfterFees,
+            new: updates.earnedAfterFees
+          });
+        }
+      }
+
+      // Calculate stats if needed
+      console.log('🟡 [5e. Calculating Stats]');
+      const newStats = calculateStats(
+        updates.earnedAfterFees || formData.earnedAfterFees || 0,
+        formData.billedMinutes || 0,
+        formData.editingTime || { hours: 0, minutes: 0, seconds: 0 }
+      );
+
+      if (newStats.perMinute !== stats.perMinute || 
+          newStats.perHourWorked !== stats.perHourWorked) {
+        console.log('🟢 [5f. Stats Updated]', {
+          old: stats,
+          new: newStats
+        });
+        setStats(newStats);
+      }
+
+      // Apply updates if any
+      if (hasUpdates) {
+        console.log('🟢 [5g. Applying Form Updates]', updates);
+        setFormData(prev => ({
+          ...prev,
+          ...updates
+        }));
+      }
+    } finally {
+      console.log('🔵 [5h. Update Cycle Complete]');
+      isUpdatingRef.current = false;
+    }
+  }, [
+    formData.invoicedAmount,
+    formData.paymentMethod,
+    formData.earnedAfterFees,
+    formData.billedMinutes,
+    formData.editingTime
+  ]);
 
   const [saving, setSaving] = useState(false);
-
-  // Automatically calculate earnedAfterFees when invoicedAmount or paymentMethod changes
-  useEffect(() => {
-    const earnedAfterFees = calculateEarnedAfterFees(
-      formData.invoicedAmount || 0,
-      formData.paymentMethod || ''
-    );
-    setFormData(prev => ({
-      ...prev,
-      earnedAfterFees: Number(earnedAfterFees.toFixed(2)), // Round to 2 decimal places
-    }));
-  }, [formData.invoicedAmount, formData.paymentMethod]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -261,12 +284,12 @@ export function InvoiceEditForm({ invoice, open, onOpenChange, onSave, mode = 'e
     }
   };
 
+  // Handle form field changes
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'number' ? parseFloat(value) : value,
-    }));
+    const newValue = type === 'number' ? parseFloat(value) : value;
+    console.log('🔵 [6. Form Field Change]', { field: name, value: newValue });
+    setFormData(prev => ({ ...prev, [name]: newValue }));
   };
 
   const [clients, setClients] = useState<string[]>([]);
@@ -338,18 +361,79 @@ export function InvoiceEditForm({ invoice, open, onOpenChange, onSave, mode = 'e
     }
   };
 
-  // Add function to update a length entry
+  // Update length entry
   const updateLengthEntry = (index: number, field: keyof TimeEntry, value: number) => {
-    const newLengthEntries = [...lengthEntries];
-    newLengthEntries[index] = { ...newLengthEntries[index], [field]: value };
-    setLengthEntries(newLengthEntries);
+    console.log('🔵 [8. Length Entry Update]', { index, field, value });
+    
+    setLengthEntries(prevEntries => {
+      const newLengthEntries = [...prevEntries];
+      newLengthEntries[index] = { ...newLengthEntries[index], [field]: value };
+      
+      // Calculate total length
+      const totalLength = sumTimeEntries(newLengthEntries);
+      console.log('🟡 [8a. Calculated Total Length]', { totalLength });
+      
+      // Update form data with new total length
+      console.log('🟢 [8b. Updating Form Data with Total Length]');
+      setFormData(prev => ({ ...prev, length: totalLength }));
+      
+      return newLengthEntries;
+    });
+  };
 
-    // Calculate total length and update formData
-    const totalLength = sumTimeEntries(newLengthEntries);
-    setFormData(prev => ({
-      ...prev,
-      length: totalLength
-    }));
+  // Add function to handle adding a new time entry
+  const addTimeEntry = () => {
+    setTimeEntries([...timeEntries, { hours: 0, minutes: 0, seconds: 0 }]);
+  };
+
+  // Add function to handle removing a time entry
+  const removeTimeEntry = (index: number) => {
+    if (timeEntries.length > 1) {
+      setTimeEntries(timeEntries.filter((_, i) => i !== index));
+    }
+  };
+
+  // Update time entry
+  const updateTimeEntry = (index: number, field: keyof TimeEntry, value: number) => {
+    console.log('🔵 [7. Time Entry Update]', { index, field, value });
+    
+    setTimeEntries(prevEntries => {
+      const newTimeEntries = [...prevEntries];
+      newTimeEntries[index] = { ...newTimeEntries[index], [field]: value };
+      
+      // Calculate total time
+      const totalTime = sumTimeEntries(newTimeEntries);
+      console.log('🟡 [7a. Calculated Total Time]', { totalTime });
+      
+      // Update form data with new total time
+      console.log('🟢 [7b. Updating Form Data with Total Time]');
+      setFormData(prev => ({ ...prev, editingTime: totalTime }));
+      
+      return newTimeEntries;
+    });
+  };
+
+  // Add function to sum up time entries
+  const sumTimeEntries = (entries: TimeEntry[]) => {
+    const total = entries.reduce(
+      (acc, entry) => {
+        let totalSeconds = acc.seconds + entry.seconds;
+        let totalMinutes = acc.minutes + entry.minutes + Math.floor(totalSeconds / 60);
+        const totalHours = acc.hours + entry.hours + Math.floor(totalMinutes / 60);
+        
+        totalSeconds = totalSeconds % 60;
+        totalMinutes = totalMinutes % 60;
+
+        return {
+          hours: totalHours,
+          minutes: totalMinutes,
+          seconds: totalSeconds
+        };
+      },
+      { hours: 0, minutes: 0, seconds: 0 }
+    );
+
+    return total;
   };
 
   return (

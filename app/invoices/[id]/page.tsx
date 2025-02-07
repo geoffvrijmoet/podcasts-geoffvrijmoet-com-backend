@@ -79,14 +79,48 @@ export default function InvoicePage({ params }: InvoicePageProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const fetchInvoice = useCallback(async () => {
+  // Memoize calculateBilledAmount to prevent unnecessary recalculations
+  const calculateBilledAmount = useCallback(
+    (currentInvoice: Invoice | null, currentClient: Client | null): { billed: number; invoicedAmount: number } => {
+      if (!currentInvoice || !currentClient) return { billed: 0, invoicedAmount: 0 };
+
+      const rate = currentClient.rates.find(r => 
+        r.episodeType === (currentInvoice.type === 'Video' ? 'Podcast video' : 'Podcast')
+      );
+      if (!rate) return { billed: 0, invoicedAmount: 0 };
+
+      if (rate.rateType === 'Flat rate') {
+        return {
+          billed: 1,
+          invoicedAmount: rate.rate
+        };
+      } else if (currentInvoice.type === 'Video') {
+        const hours = calculateDecimalHours(currentInvoice.editingTime);
+        return {
+          billed: hours,
+          invoicedAmount: Number((hours * rate.rate).toFixed(2))
+        };
+      } else {
+        const minutes = calculateDecimalMinutes(currentInvoice.length);
+        return {
+          billed: minutes,
+          invoicedAmount: Number((minutes * rate.rate).toFixed(2))
+        };
+      }
+    },
+    [] // No dependencies needed as it's a pure calculation
+  );
+
+  // Fetch both invoice and client data
+  const fetchData = useCallback(async () => {
     try {
+      console.log('Fetching invoice data...');
       const response = await fetch(`/api/invoices/${params.id}`);
       if (!response.ok) throw new Error('Failed to fetch invoice');
       const data = await response.json();
       
-      // Initialize arrays if they don't exist and normalize type
-      setInvoice({
+      // Normalize invoice data
+      const normalizedInvoice = {
         ...data,
         type: data.type === 'Podcast video' ? 'Video' : data.type === 'Podcast' ? 'Podcast' : data.type,
         editingTime: Array.isArray(data.editingTime) ? data.editingTime : [
@@ -103,63 +137,35 @@ export default function InvoicePage({ params }: InvoicePageProps) {
             seconds: data.length?.seconds || 0
           }
         ]
-      });
+      };
 
-      // Fetch client data
+      console.log('Fetching client data...');
       const clientResponse = await fetch(`/api/clients/${data.client}`);
       if (!clientResponse.ok) throw new Error('Failed to fetch client');
       const clientData = await clientResponse.json();
+
+      // Calculate initial values
+      const { billed, invoicedAmount } = calculateBilledAmount(normalizedInvoice, clientData);
+      
+      // Set all state at once
+      setInvoice({
+        ...normalizedInvoice,
+        billedMinutes: billed,
+        invoicedAmount: invoicedAmount
+      });
       setClient(clientData);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
-  }, [params.id]);
+  }, [params.id, calculateBilledAmount]);
 
+  // Single effect to fetch data
   useEffect(() => {
-    fetchInvoice();
-  }, [fetchInvoice]);
-
-  // Calculate billed amount based on type and rates
-  const calculateBilledAmount = useCallback((): { billed: number; invoicedAmount: number } => {
-    if (!invoice || !client) return { billed: 0, invoicedAmount: 0 };
-
-    const rate = client.rates.find(r => 
-      r.episodeType === (invoice.type === 'Video' ? 'Podcast video' : 'Podcast')
-    );
-    if (!rate) return { billed: 0, invoicedAmount: 0 };
-
-    if (rate.rateType === 'Flat rate') {
-      return {
-        billed: 1, // For flat rate, billed quantity is always 1
-        invoicedAmount: rate.rate
-      };
-    } else if (invoice.type === 'Video') {
-      const hours = calculateDecimalHours(invoice.editingTime);
-      return {
-        billed: hours,
-        invoicedAmount: Number((hours * rate.rate).toFixed(2))
-      };
-    } else {
-      const minutes = calculateDecimalMinutes(invoice.length);
-      return {
-        billed: minutes,
-        invoicedAmount: Number((minutes * rate.rate).toFixed(2))
-      };
-    }
-  }, [invoice, client]);
-
-  useEffect(() => {
-    if (invoice && client) {
-      const { billed, invoicedAmount } = calculateBilledAmount();
-      setInvoice(prev => ({
-        ...prev!,
-        billedMinutes: billed,
-        invoicedAmount: invoicedAmount
-      }));
-    }
-  }, [invoice, client, calculateBilledAmount]);
+    console.log('Initial data fetch');
+    fetchData();
+  }, [fetchData]);
 
   const formatCurrency = (amount: number): string => {
     return new Intl.NumberFormat('en-US', {
@@ -201,28 +207,51 @@ export default function InvoicePage({ params }: InvoicePageProps) {
     if (!invoice) return;
     
     try {
+      console.log('Starting PDF download for:', {
+        client: invoice.client,
+        episodeTitle: invoice.episodeTitle
+      });
+
       // Send current invoice state to get PDF with current values
+      const requestBody = {
+        ...invoice,
+        // Convert type back to MongoDB format
+        type: invoice.type === 'Video' ? 'Podcast video' : invoice.type === 'Podcast' ? 'Podcast' : invoice.type,
+        // Ensure we use the calculated values
+        billedMinutes: calculateBilledAmount(invoice, client).billed,
+        invoicedAmount: calculateBilledAmount(invoice, client).invoicedAmount
+      };
+      console.log('Sending request with body:', requestBody);
+
       const response = await fetch(`/api/invoices/${params.id}/pdf`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          ...invoice,
-          // Convert type back to MongoDB format
-          type: invoice.type === 'Video' ? 'Podcast video' : invoice.type === 'Podcast' ? 'Podcast' : invoice.type,
-          // Ensure we use the calculated values
-          billedMinutes: calculateBilledAmount().billed,
-          invoicedAmount: calculateBilledAmount().invoicedAmount
-        }),
+        body: JSON.stringify(requestBody),
       });
       
       if (!response.ok) throw new Error('Failed to generate PDF');
       
-      const blob = await response.blob();
+      // Log response details
+      const disposition = response.headers.get('Content-Disposition');
+      console.log('PDF download response:', {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        contentType: response.headers.get('Content-Type'),
+        contentDisposition: disposition
+      });
       
-      // Generate filename
-      const filename = `${invoice.client.toLowerCase().replace(/\s+/g, '-')}-${invoice.episodeTitle.toLowerCase().replace(/\s+/g, '-')}.pdf`;
+      const blob = await response.blob();
+      console.log('Received PDF blob:', {
+        size: blob.size,
+        type: blob.type
+      });
+      
+      // Extract filename from Content-Disposition header
+      const filename = disposition?.split('filename="')[1]?.split('"')[0] || 'invoice.pdf';
+      console.log('Using filename:', filename);
       
       // Create download link
       const url = window.URL.createObjectURL(blob);
@@ -304,7 +333,7 @@ export default function InvoicePage({ params }: InvoicePageProps) {
               <Input
                 id="billedAmount"
                 type="number"
-                value={calculateBilledAmount().billed}
+                value={calculateBilledAmount(invoice, client).billed}
                 disabled
               />
             </div>
@@ -313,7 +342,7 @@ export default function InvoicePage({ params }: InvoicePageProps) {
               <Label htmlFor="invoicedAmount" className="mb-2 block">Invoiced Amount</Label>
               <Input
                 id="invoicedAmount"
-                value={formatCurrency(calculateBilledAmount().invoicedAmount)}
+                value={formatCurrency(calculateBilledAmount(invoice, client).invoicedAmount)}
                 disabled
               />
               {client && invoice && (
@@ -324,7 +353,7 @@ export default function InvoicePage({ params }: InvoicePageProps) {
                     );
                     if (!rate) return 'No rate found';
                     
-                    const { billed } = calculateBilledAmount();
+                    const { billed } = calculateBilledAmount(invoice, client);
                     if (rate.rateType === 'Flat rate') {
                       return `Flat rate: ${formatCurrency(rate.rate)}`;
                     }
@@ -508,7 +537,7 @@ export default function InvoicePage({ params }: InvoicePageProps) {
               <Input
                 id="dateInvoiced"
                 type="date"
-                value={invoice.dateInvoiced.split('T')[0]}
+                value={invoice.dateInvoiced ? invoice.dateInvoiced.split('T')[0] : ''}
                 onChange={(e) => setInvoice({ ...invoice, dateInvoiced: e.target.value })}
               />
             </div>
