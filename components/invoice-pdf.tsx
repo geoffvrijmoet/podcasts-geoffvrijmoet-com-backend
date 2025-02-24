@@ -1,64 +1,13 @@
-import { Document, Page, Text, View, StyleSheet, Font, Link } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Link } from '@react-pdf/renderer';
 import { createElement } from 'react';
 
-// Register Quicksand fonts
-Font.register({
-  family: 'Quicksand',
-  fonts: [
-    {
-      src: `${process.env.NEXT_PUBLIC_BASE_URL}/fonts/quicksand-latin-400-normal.woff`,
-      fontWeight: 400,
-    },
-    {
-      src: `${process.env.NEXT_PUBLIC_BASE_URL}/fonts/quicksand-latin-700-normal.woff`,
-      fontWeight: 700,
-    },
-  ],
-});
 
-interface TimeEntry {
-  hours: number;
-  minutes: number;
-  seconds: number;
-}
 
-interface Invoice {
-  _id: string;
-  client: string;
-  episodeTitle: string;
-  type: string;
-  invoicedAmount: number;
-  billedMinutes: number;
-  length: TimeEntry[];
-  paymentMethod: string;
-  editingTime: TimeEntry[];
-  dateInvoiced: string;
-  datePaid: string;
-  note: string;
-}
-
-interface Rate {
-  episodeType: string;
-  rateType: 'Per delivered minute' | 'Hourly' | 'Flat rate';
-  rate: number;
-}
-
-interface Client {
-  _id: string;
-  name: string;
-  aliases?: string[];
-  rates: Rate[];
-}
-
-export interface InvoicePDFProps {
-  invoice: Invoice;
-  clientData: Client;
-}
-
+// Use standard Helvetica font which is built into PDF generation
 const styles = StyleSheet.create({
   page: {
     padding: 40,
-    fontFamily: 'Quicksand',
+    fontFamily: 'Quicksand-Bold',
     fontSize: 12,
   },
   headerSection: {
@@ -71,22 +20,22 @@ const styles = StyleSheet.create({
   },
   companyName: {
     fontSize: 24,
-    fontWeight: 700,
+    fontFamily: 'Quicksand-Bold',
     marginBottom: 10,
   },
   companyDetails: {
-    color: '#666',
+    color: '#000',
   },
   billToSection: {
     width: '40%',
   },
   billToHeader: {
     fontSize: 14,
-    fontWeight: 700,
+    fontFamily: 'Quicksand-Bold',
     marginBottom: 10,
   },
   billToDetails: {
-    color: '#666',
+    color: '#000',
   },
   dateSection: {
     alignItems: 'center',
@@ -94,7 +43,7 @@ const styles = StyleSheet.create({
   },
   dateText: {
     fontSize: 14,
-    color: '#666',
+    color: '#000',
   },
   gridContainer: {
     marginBottom: 30,
@@ -131,8 +80,8 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   headerText: {
-    fontWeight: 700,
-    color: '#666',
+    fontFamily: 'Quicksand-Bold',
+    color: '#000',
   },
   totalSection: {
     flexDirection: 'row',
@@ -152,18 +101,18 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     paddingRight: 10,
     fontSize: 14,
-    fontWeight: 700,
+    fontFamily: 'Quicksand-Bold',
   },
   totalValue: {
     width: '50%',
     textAlign: 'right',
     fontSize: 14,
-    fontWeight: 700,
+    fontFamily: 'Quicksand-Bold',
   },
   thankYou: {
     textAlign: 'center',
     fontSize: 14,
-    color: '#666',
+    color: '#000',
   },
   paymentSection: {
     marginBottom: 20,
@@ -171,9 +120,9 @@ const styles = StyleSheet.create({
   },
   paymentTitle: {
     fontSize: 14,
-    fontWeight: 700,
+    fontFamily: 'Quicksand-Bold',
     marginBottom: 12,
-    color: '#666',
+    color: '#000',
   },
   paymentLink: {
     color: '#2563eb',
@@ -184,6 +133,45 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 });
+
+interface TimeEntry {
+  hours: number;
+  minutes: number;
+  seconds: number;
+}
+
+export interface Invoice {
+  _id: string;
+  client: string;
+  episodeTitle: string;
+  type: string;
+  invoicedAmount: number;
+  billedMinutes: number;
+  length: TimeEntry[];
+  paymentMethod: string;
+  editingTime: TimeEntry[];
+  dateInvoiced: string;
+  datePaid: string;
+  note: string;
+}
+
+export interface Rate {
+  episodeType: string;
+  rateType: 'Per delivered minute' | 'Hourly' | 'Flat rate';
+  rate: number;
+}
+
+export interface Client {
+  _id: string;
+  name: string;
+  aliases?: string[];
+  rates: Rate[];
+}
+
+export interface InvoicePDFProps {
+  invoice: Invoice;
+  clientData: Client;
+}
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-US', {
@@ -197,10 +185,10 @@ const formatDate = (dateString: string) => {
   try {
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return '';
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
     });
   } catch {
     console.error('Invalid date:', dateString);
@@ -268,9 +256,9 @@ export function createInvoicePDF({ invoice, clientData }: InvoicePDFProps) {
       quantity = formatDuration(invoice.editingTime);
       // Calculate decimal hours and subtotal
       const totalSeconds = invoice.editingTime.reduce((acc, entry) => {
-        return acc + 
-          (entry.hours * 3600) + 
-          (entry.minutes * 60) + 
+        return acc +
+          (entry.hours * 3600) +
+          (entry.minutes * 60) +
           entry.seconds;
       }, 0);
       const decimalHours = Number((totalSeconds / 3600).toFixed(2));
@@ -325,12 +313,12 @@ export function createInvoicePDF({ invoice, clientData }: InvoicePDFProps) {
   const filename = `${cleanedClient}-${cleanedEpisodeTitle}.pdf`;
   console.log('Final filename:', filename);
 
-  return createElement(Document, { 
+  return createElement(Document, {
     title: filename,
     author: 'Aurora Media LLC',
     producer: 'Aurora Media LLC',
     creator: 'Aurora Media LLC'
-  }, 
+  },
     createElement(Page, { size: "A4", style: styles.page }, [
       // Header with Company and Bill To sections
       createElement(View, { style: styles.headerSection, key: 'header' }, [
@@ -348,7 +336,7 @@ export function createInvoicePDF({ invoice, clientData }: InvoicePDFProps) {
 
       // Date Section
       createElement(View, { style: styles.dateSection, key: 'date' }, [
-        createElement(Text, { style: styles.dateText, key: 'invoice-date' }, 
+        createElement(Text, { style: styles.dateText, key: 'invoice-date' },
           `Invoice Date: ${formatDate(invoice.dateInvoiced)}`
         ),
       ]),
@@ -363,7 +351,7 @@ export function createInvoicePDF({ invoice, clientData }: InvoicePDFProps) {
         ]),
 
         // Line Items
-        ...items.map((item, index) => 
+        ...items.map((item, index) =>
           createElement(View, { style: styles.gridRow, key: `row-${index}` }, [
             createElement(Text, { style: styles.colItem, key: `item-${index}` }, item.item),
             createElement(Text, { style: styles.colQty, key: `qty-${index}` }, item.quantity),
@@ -383,10 +371,10 @@ export function createInvoicePDF({ invoice, clientData }: InvoicePDFProps) {
 
       // Payment Section
       createElement(View, { style: styles.paymentSection, key: 'payment-section' }, [
-        createElement(Text, { style: styles.paymentTitle, key: 'payment-title' }, 
+        createElement(Text, { style: styles.paymentTitle, key: 'payment-title' },
           'How to pay'
         ),
-        createElement(Link, { 
+        createElement(Link, {
           src: `https://pay.podcasts.geoffvrijmoet.com/invoice/${invoice._id}`,
           style: [styles.paymentLink, styles.paymentMethod],
           key: 'card-link'
@@ -404,7 +392,7 @@ export function createInvoicePDF({ invoice, clientData }: InvoicePDFProps) {
       ]),
 
       // Thank You Message
-      createElement(Text, { style: styles.thankYou, key: 'thank-you' }, 
+      createElement(Text, { style: styles.thankYou, key: 'thank-you' },
         'Thanks for your consideration!'
       ),
     ])

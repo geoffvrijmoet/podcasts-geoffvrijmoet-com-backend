@@ -211,24 +211,10 @@ export default function InvoicePage({ params }: InvoicePageProps) {
         client: invoice.client,
         episodeTitle: invoice.episodeTitle
       });
-
-      // Send current invoice state to get PDF with current values
-      const requestBody = {
-        ...invoice,
-        // Convert type back to MongoDB format
-        type: invoice.type === 'Video' ? 'Podcast video' : invoice.type === 'Podcast' ? 'Podcast' : invoice.type,
-        // Ensure we use the calculated values
-        billedMinutes: calculateBilledAmount(invoice, client).billed,
-        invoicedAmount: calculateBilledAmount(invoice, client).invoicedAmount
-      };
-      console.log('Sending request with body:', requestBody);
-
+  
+      // Use simple GET request for server-side generation
       const response = await fetch(`/api/invoices/${params.id}/pdf`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
+        method: 'GET',
       });
       
       if (!response.ok) throw new Error('Failed to generate PDF');

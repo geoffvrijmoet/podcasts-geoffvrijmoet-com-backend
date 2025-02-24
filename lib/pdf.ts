@@ -1,6 +1,6 @@
 import { renderToStream } from '@react-pdf/renderer';
 import { createInvoicePDF } from '@/components/invoice-pdf';
-import clientPromise from '@/lib/mongodb';
+import { registerFonts } from '@/lib/fonts';
 
 interface TimeEntry {
   hours: number;
@@ -36,21 +36,10 @@ interface Client {
   rates: Rate[];
 }
 
-export async function generatePDF(invoice: Invoice) {
+export async function generatePDF({ invoice, clientData }: { invoice: Invoice; clientData: Client }) {
   try {
-    // Fetch client data if needed
-    const client = await clientPromise;
-    const collection = client.db().collection('clients');
-    const clientData = await collection.findOne({
-      $or: [
-        { name: invoice.client },
-        { aliases: invoice.client }
-      ]
-    }) as Client | null;
-
-    if (!clientData) {
-      throw new Error('Client not found');
-    }
+    // Register fonts before generating PDF
+    registerFonts();
 
     // Create PDF document
     const doc = createInvoicePDF({ 

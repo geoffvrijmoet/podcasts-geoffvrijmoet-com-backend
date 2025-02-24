@@ -1,53 +1,17 @@
 'use client';
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { EpisodeForm } from "@/components/episode-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clock, DollarSign, Headphones, Users } from "lucide-react";
 
-type Episode = {
-  client: string;
-  invoicedAmount: number;
-  datePaid: string;
-  earnedAfterFees: number;
-};
-
 export default function HomePage() {
-  const [stats, setStats] = useState({
+  const [stats] = useState({
     activeClients: 4,
     activeProjects: 6,
     hoursTracked: 24.5,
     unpaidInvoices: 0
   });
-
-  useEffect(() => {
-    async function fetchUnpaidInvoices() {
-      try {
-        const response = await fetch("/api/sheets");
-        const { data } = await response.json();
-        
-        // Calculate total unpaid invoices
-        const unpaidTotal = data.reduce((total: number, episode: Episode) => {
-          console.log('Episode:', episode);
-          // Add to total if there's no payment date and there's an invoiced amount
-          if ((!episode.datePaid || episode.datePaid.trim() === '') && episode.earnedAfterFees) {
-            return total + episode.earnedAfterFees;
-          }
-          return total;
-        }, 0);
-
-        setStats(prev => ({
-          ...prev,
-          unpaidInvoices: Number(unpaidTotal.toFixed(2))
-        }));
-
-      } catch (error) {
-        console.error("Error fetching unpaid invoices:", error);
-      }
-    }
-
-    fetchUnpaidInvoices();
-  }, []);
 
   return (
     <div className="space-y-8">

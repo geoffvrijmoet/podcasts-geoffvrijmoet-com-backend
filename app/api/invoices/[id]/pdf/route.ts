@@ -1,29 +1,8 @@
 import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import clientPromise from '@/lib/mongodb';
-import { generatePDF } from '../../../../../lib/pdf';
-
-interface TimeEntry {
-  hours: number;
-  minutes: number;
-  seconds: number;
-}
-
-interface Invoice {
-  _id: string;
-  client: string;
-  episodeTitle: string;
-  type: string;
-  invoicedAmount: number;
-  earnedAfterFees: number;
-  billedMinutes: number;
-  length: TimeEntry[];
-  editingTime: TimeEntry[];
-  dateInvoiced: string;
-  datePaid: string;
-  note: string;
-  paymentMethod: string;
-}
+import { generatePDF } from '@/lib/pdf';
+import type { Invoice, Client } from '@/components/invoice-pdf';
 
 // Helper function to add CORS headers
 function corsHeaders() {
@@ -38,107 +17,68 @@ export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders() });
 }
 
-export async function POST(request: Request) {
-  try {
-    // Get the invoice data from the request body instead of the database
-    const invoiceData = await request.json();
-    console.log('PDF generation request for:', {
-      client: invoiceData.client,
-      episodeTitle: invoiceData.episodeTitle,
-      type: invoiceData.type
-    });
-    
-    // Generate PDF using the provided invoice data
-    const pdfBuffer = await generatePDF(invoiceData);
-    
-    // Clean filename function
-    const cleanFileName = (str: string) => {
-      const cleaned = str
-        .toLowerCase()
-        // Replace apostrophes and special characters with nothing
-        .replace(/[''"]/g, '')
-        // Replace [video] with video-
-        .replace(/\[video\]/gi, 'video-')
-        // Remove any remaining square brackets and their contents
-        .replace(/\[.*?\]/g, '')
-        // Replace spaces with dashes
-        .replace(/\s+/g, '-')
-        // Remove parentheses and their contents
-        .replace(/\(.*?\)/g, '')
-        // Remove any leading dashes
-        .replace(/^-+/, '')
-        // Remove any trailing dashes
-        .replace(/-+$/, '')
-        // Replace multiple dashes with single dash (do this last)
-        .replace(/-+/g, '-');
-      console.log(`Cleaning filename part: "${str}" -> "${cleaned}"`);
-      return cleaned;
-    };
-
-    const cleanedClient = cleanFileName(invoiceData.client);
-    const cleanedEpisodeTitle = cleanFileName(invoiceData.episodeTitle);
-    const filename = `${cleanedClient}-${cleanedEpisodeTitle}.pdf`;
-    console.log('Final generated filename:', filename);
-    
-    // Return the PDF with appropriate headers
-    return new NextResponse(pdfBuffer, {
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${filename}"`,
-      },
-    });
-  } catch (error) {
-    console.error('Error generating PDF:', error);
-    return new NextResponse('Error generating PDF', { status: 500 });
-  }
-}
-
-// Keep the GET endpoint as a fallback
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
     const client = await clientPromise;
-    const collection = client.db().collection('invoices');
+    const db = client.db();
     
-    const invoice = (await collection.findOne({ 
+    // Get invoice data
+    const invoiceDoc = await db.collection('invoices').findOne({
       _id: new ObjectId(params.id)
-    })) as unknown as Invoice;
-    
-    if (!invoice) {
+    });
+
+    if (!invoiceDoc) {
       return new NextResponse('Invoice not found', { status: 404 });
     }
-    
-    const pdfBuffer = await generatePDF(invoice);
 
-    // Clean filename function
+    const invoice = { ...invoiceDoc, _id: invoiceDoc._id.toString() } as Invoice;
+
+    // Get client data
+    const clientDoc = await db.collection('clients').findOne({
+      $or: [
+        { name: invoice.client },
+        { aliases: invoice.client }
+      ]
+    });
+
+    if (!clientDoc) {
+      console.error('Client not found:', {
+        invoiceClient: invoice.client,
+        query: {
+          name: invoice.client,
+          aliases: invoice.client
+        }
+      });
+      return new NextResponse('Client not found', { status: 404 });
+    }
+
+    const clientData = { ...clientDoc, _id: clientDoc._id.toString() } as Client;
+
+    // Generate PDF with both invoice and client data
+    const pdfBuffer = await generatePDF({ 
+      invoice, 
+      clientData 
+    });
+
+    // Clean filename
     const cleanFileName = (str: string) => {
-      const cleaned = str
+      return str
         .toLowerCase()
-        // Replace apostrophes and special characters with nothing
         .replace(/[''"]/g, '')
-        // Replace [video] with video-
         .replace(/\[video\]/gi, 'video-')
-        // Remove any remaining square brackets and their contents
         .replace(/\[.*?\]/g, '')
-        // Replace spaces with dashes
         .replace(/\s+/g, '-')
-        // Remove parentheses and their contents
         .replace(/\(.*?\)/g, '')
-        // Remove any leading dashes
         .replace(/^-+/, '')
-        // Remove any trailing dashes
         .replace(/-+$/, '')
-        // Replace multiple dashes with single dash (do this last)
         .replace(/-+/g, '-');
-      console.log(`Cleaning filename part: "${str}" -> "${cleaned}"`);
-      return cleaned;
     };
 
     const filename = `${cleanFileName(invoice.client)}-${cleanFileName(invoice.episodeTitle)}.pdf`;
-    console.log('Generated filename:', filename);
-    
+
     return new NextResponse(pdfBuffer, {
       headers: {
         'Content-Type': 'application/pdf',
